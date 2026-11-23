@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000/api/alumnos`;
 
@@ -22,25 +21,21 @@ const PREFIJOS_MUNICIPIOS = {
   '545': 'Isidro Fabela'
 };
 
-// Componente vectorial del Logotipo Institucional UTFV (colores exactos de la imagen)
+// Componente vectorial del Logotipo Institucional UTFV
 function LogoUTFV({ ancho = 135 }) {
   return (
     <svg width={ancho} viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg" aria-label="Logo UTFV">
-      {/* Tres puntos dorados */}
       <circle cx="54" cy="24" r="11" fill="#C48F4B" />
       <circle cx="82" cy="18" r="11" fill="#C48F4B" />
       <circle cx="82" cy="44" r="11" fill="#C48F4B" />
-      {/* Letra U en dorado */}
       <path
         d="M44 58 H78 V108 C78 125 89 135 105 135 C121 135 132 125 132 108 V40 H166 V108 C166 144 140 166 105 166 C70 166 44 144 44 108 Z"
         fill="#C48F4B"
       />
-      {/* Letra T en vino oscuro */}
       <path
         d="M126 18 H246 V48 H203 V164 H195 C178 164 168 154 168 137 V48 H126 Z"
         fill="#6B2A32"
       />
-      {/* Letras FV en terracota */}
       <text
         x="212"
         y="156"
@@ -51,9 +46,7 @@ function LogoUTFV({ ancho = 135 }) {
       >
         FV
       </text>
-      {/* Línea divisoria dorada */}
       <line x1="25" y1="174" x2="335" y2="174" stroke="#C48F4B" strokeWidth="2.5" />
-      {/* Textos institucionales */}
       <text
         x="180"
         y="193"
@@ -114,8 +107,60 @@ function MembreteUTFV({ tituloDocumento }) {
   );
 }
 
+// Función auxiliar para dibujar tablas centradas en jsPDF sin plugins externos
+function dibujarTablaCentradaPDF(doc, startY, columnas, filas) {
+  let y = startY;
+  const altoEncabezado = 9;
+
+  // Encabezado guinda
+  doc.setFillColor(158, 27, 50);
+  doc.rect(10, y, 190, altoEncabezado, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+
+  columnas.forEach((col) => {
+    doc.text(col.titulo, col.x + col.w / 2, y + 6, { align: 'center' });
+  });
+
+  y += altoEncabezado;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+
+  filas.forEach((fila, idxFila) => {
+    const textosDivididos = columnas.map((col, i) =>
+      doc.splitTextToSize(String(fila[i] ?? '-'), col.w - 3)
+    );
+    const maxLineas = Math.max(...textosDivididos.map((t) => t.length));
+    const altoFila = Math.max(8, maxLineas * 4.2 + 3.5);
+
+    if (y + altoFila > 272) {
+      doc.addPage();
+      y = 18;
+    }
+
+    if (idxFila % 2 === 1) {
+      doc.setFillColor(253, 248, 248);
+      doc.rect(10, y, 190, altoFila, 'F');
+    }
+
+    doc.setDrawColor(215, 200, 202);
+    doc.setTextColor(44, 36, 37);
+
+    columnas.forEach((col, i) => {
+      doc.rect(col.x, y, col.w, altoFila);
+      const lineas = textosDivididos[i];
+      const inicioTextoY = y + (altoFila - (lineas.length - 1) * 4.2) / 2 + 1.2;
+      doc.text(lineas, col.x + col.w / 2, inicioTextoY, { align: 'center' });
+    });
+
+    y += altoFila;
+  });
+
+  return y;
+}
+
 function App() {
-  // Estado de autenticación de Administrador
   const [autenticado, setAutenticado] = useState(
     () => sessionStorage.getItem('utfv_admin_auth') === 'true'
   );
@@ -128,11 +173,9 @@ function App() {
   const [pestana, setPestana] = useState('padron');
   const [mensaje, setMensaje] = useState(null);
 
-  // Filtros del padrón general
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstatus, setFiltroEstatus] = useState('TODOS');
 
-  // Formulario de nuevo aspirante + automatización CP
   const [nuevoAspirante, setNuevoAspirante] = useState({
     nombre: '',
     apellido_p: '',
@@ -153,7 +196,6 @@ function App() {
   const [coloniasDisponibles, setColoniasDisponibles] = useState([]);
   const [buscandoCP, setBuscandoCP] = useState(false);
 
-  // Formulario de inscripción y carga académica
   const [inscripcion, setInscripcion] = useState({
     aspiranteId: '',
     matricula: '',
@@ -162,13 +204,11 @@ function App() {
     tutor_grupo: 'M. en D. Arturo Hernández Jiménez'
   });
 
-  // Consulta y captura de boleta
   const [matriculaBusqueda, setMatriculaBusqueda] = useState('');
   const [alumnoBoleta, setAlumnoBoleta] = useState(null);
   const [notasEditadas, setNotasEditadas] = useState({});
   const [edicionBloqueada, setEdicionBloqueada] = useState(false);
 
-  // Consulta de Kardex
   const [alumnoKardex, setAlumnoKardex] = useState(null);
 
   const mostrarAlerta = (tipo, texto) => {
@@ -176,7 +216,6 @@ function App() {
     setTimeout(() => setMensaje(null), 5000);
   };
 
-  // Manejar inicio de sesión de Administrador
   const manejarLogin = async (e) => {
     e.preventDefault();
     setErrorLogin('');
@@ -186,7 +225,6 @@ function App() {
       sessionStorage.setItem('utfv_admin_auth', 'true');
       setAutenticado(true);
     } catch (error) {
-      // Respaldo por si el servidor aún está despertando
       if (loginData.usuario === 'admin' && loginData.password === 'utfv2026') {
         sessionStorage.setItem('utfv_admin_auth', 'true');
         setAutenticado(true);
@@ -222,7 +260,6 @@ function App() {
     }
   }, [autenticado]);
 
-  // Automatización de Código Postal (5 dígitos)
   const manejarCambioCP = async (valorRaw) => {
     const cpLimpio = valorRaw.replace(/\D/g, '').slice(0, 5);
     setNuevoAspirante((prev) => ({ ...prev, c_p: cpLimpio }));
@@ -267,7 +304,6 @@ function App() {
     }
   };
 
-  // Registrar nuevo aspirante
   const manejarRegistroAspirante = async (e) => {
     e.preventDefault();
     if (nuevoAspirante.telefono && nuevoAspirante.telefono.length !== 10) {
@@ -323,7 +359,6 @@ function App() {
     }
   };
 
-  // Inscribir aspirante con carga académica automática
   const manejarInscripcion = async (e) => {
     e.preventDefault();
     if (!inscripcion.aspiranteId) {
@@ -352,7 +387,6 @@ function App() {
     }
   };
 
-  // Eliminar registro
   const manejarEliminar = async (id, nombreCompleto) => {
     if (!window.confirm(`¿Deseas eliminar el registro de ${nombreCompleto}?`)) return;
     try {
@@ -364,7 +398,6 @@ function App() {
     }
   };
 
-  // Buscar boleta y kardex por matrícula
   const consultarBoleta = async (mat, irAPestana = null) => {
     const matriculaObjetivo = (mat || matriculaBusqueda).trim();
     if (!matriculaObjetivo) {
@@ -400,7 +433,6 @@ function App() {
       }
 
       setNotasEditadas(mapaNotas);
-      // Si ya tiene calificaciones guardadas, se bloquea hasta presionar "Corregir Calificaciones"
       setEdicionBloqueada(tieneCalificacionesGuardadas);
       if (irAPestana) setPestana(irAPestana);
     } catch (error) {
@@ -410,7 +442,6 @@ function App() {
     }
   };
 
-  // Cálculo automático de promedio por materia al capturar parciales
   const cambiarNotaInput = (claveMateria, campo, valor) => {
     setNotasEditadas((prev) => {
       const actual = { ...prev[claveMateria], [campo]: valor };
@@ -435,7 +466,6 @@ function App() {
     });
   };
 
-  // Guardar TODAS las calificaciones de una sola vez + actualizar Kardex
   const guardarTodasCalificaciones = async () => {
     if (!alumnoBoleta) return;
     try {
@@ -456,7 +486,6 @@ function App() {
     }
   };
 
-  // Guardar explícitamente en el registro académico (Kardex)
   const guardarEnKardex = async () => {
     if (!alumnoBoleta) return;
     try {
@@ -470,7 +499,6 @@ function App() {
     }
   };
 
-  // Calcular promedio general de la boleta en tiempo real
   const calcularPromedioGeneral = () => {
     const lista = Object.values(notasEditadas)
       .map((n) => n.final)
@@ -482,155 +510,159 @@ function App() {
     return (suma / lista.length).toFixed(2);
   };
 
-  // Generar PDF oficial con membrete de la Boleta
+  // Generar PDF oficial con membrete de la Boleta (100% compatible con Vite)
   const descargarBoletaPDF = () => {
     if (!alumnoBoleta) return;
-    const doc = new jsPDF();
-    const promedioGen = calcularPromedioGeneral();
+    try {
+      const doc = new jsPDF();
+      const promedioGen = calcularPromedioGeneral();
 
-    // Encabezado / Membrete institucional
-    doc.setFillColor(158, 27, 50); // Guinda UTFV
-    doc.rect(0, 0, 210, 34, 'F');
-    doc.setFillColor(196, 143, 75); // Dorado UTFV
-    doc.rect(0, 34, 210, 3, 'F');
+      // Membrete institucional UTFV
+      doc.setFillColor(158, 27, 50);
+      doc.rect(0, 0, 210, 34, 'F');
+      doc.setFillColor(196, 143, 75);
+      doc.rect(0, 34, 210, 3, 'F');
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
-    doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 10, { align: 'center' });
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 18, { align: 'center' });
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Dirección de Servicios Escolares • Boleta Oficial de Calificaciones', 105, 26, {
-      align: 'center'
-    });
-
-    // Datos del alumno centrados
-    doc.setTextColor(44, 36, 37);
-    doc.setFontSize(10);
-    const nombreCompleto = `${alumnoBoleta.nombre} ${alumnoBoleta.apellido_p} ${alumnoBoleta.apellido_m}`;
-    doc.setFont('helvetica', 'bold');
-    doc.text(`ALUMNO: ${nombreCompleto}`, 105, 47, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.text(
-      `MATRÍCULA: ${alumnoBoleta.matricula}   |   GRUPO: ${alumnoBoleta.academico?.grupo} (${alumnoBoleta.academico?.cuatrimestre} Cuatrimestre)`,
-      105,
-      54,
-      { align: 'center' }
-    );
-    doc.text(`CARRERA: ${alumnoBoleta.academico?.carrera}`, 105, 61, { align: 'center' });
-    doc.text(
-      `PERIODO: ${alumnoBoleta.academico?.periodo}   |   TUTOR: ${alumnoBoleta.academico?.tutor_grupo}`,
-      105,
-      68,
-      { align: 'center' }
-    );
-
-    const filas = (alumnoBoleta.cargas_academicas?.[0]?.materias || []).map((mat) => {
-      const n = notasEditadas[mat.clave] || {};
-      return [
-        mat.clave,
-        mat.nombre,
-        mat.profesor,
-        n.parcial_1 !== '' && n.parcial_1 !== null ? n.parcial_1 : '-',
-        n.parcial_2 !== '' && n.parcial_2 !== null ? n.parcial_2 : '-',
-        n.parcial_3 !== '' && n.parcial_3 !== null ? n.parcial_3 : '-',
-        n.final !== '' && n.final !== null ? n.final : '-'
-      ];
-    });
-
-    autoTable(doc, {
-      startY: 75,
-      head: [['Clave', 'Asignatura', 'Docente', 'Parcial 1', 'Parcial 2', 'Parcial 3', 'Final']],
-      body: filas,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [158, 27, 50],
-        textColor: [255, 255, 255],
-        halign: 'center',
-        fontStyle: 'bold'
-      },
-      styles: {
-        halign: 'center',
-        valign: 'middle',
-        fontSize: 8.5,
-        cellPadding: 3
-      },
-      alternateRowStyles: {
-        fillColor: [253, 248, 248]
-      }
-    });
-
-    const finalY = doc.lastAutoTable.finalY + 12;
-
-    // Caja de Promedio General
-    doc.setFillColor(107, 42, 50);
-    doc.roundedRect(65, finalY, 80, 16, 3, 3, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`PROMEDIO GENERAL: ${promedioGen}`, 105, finalY + 10.5, { align: 'center' });
-
-    // Firmas institucionales
-    doc.setTextColor(80, 80, 80);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.line(30, finalY + 38, 90, finalY + 38);
-    doc.text('Control Escolar UTFV', 60, finalY + 43, { align: 'center' });
-
-    doc.line(120, finalY + 38, 180, finalY + 38);
-    doc.text('Tutor de Grupo', 150, finalY + 43, { align: 'center' });
-
-    doc.save(`Boleta_UTFV_${alumnoBoleta.matricula}.pdf`);
-  };
-
-  // Generar PDF oficial del Kardex Académico
-  const descargarKardexPDF = () => {
-    if (!alumnoKardex) return;
-    const doc = new jsPDF();
-
-    doc.setFillColor(107, 42, 50);
-    doc.rect(0, 0, 210, 34, 'F');
-    doc.setFillColor(196, 143, 75);
-    doc.rect(0, 34, 210, 3, 'F');
-
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
-    doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 10, { align: 'center' });
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 18, { align: 'center' });
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Historial Académico Oficial (Kardex)', 105, 26, { align: 'center' });
-
-    const nombreCompleto = `${alumnoKardex.nombre} ${alumnoKardex.apellido_p} ${alumnoKardex.apellido_m}`;
-    doc.setTextColor(44, 36, 37);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`ESTUDIANTE: ${nombreCompleto}   |   MATRÍCULA: ${alumnoKardex.matricula}`, 105, 46, {
-      align: 'center'
-    });
-    doc.setFont('helvetica', 'normal');
-    doc.text(`CARRERA: ${alumnoKardex.academico?.carrera || ''}`, 105, 53, { align: 'center' });
-
-    let cursorY = 62;
-    const historial = alumnoKardex.kardex || [];
-
-    historial.forEach((bloque) => {
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 10, { align: 'center' });
+      doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(158, 27, 50);
+      doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 18, { align: 'center' });
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Dirección de Servicios Escolares • Boleta Oficial de Calificaciones', 105, 26, {
+        align: 'center'
+      });
+
+      // Datos del alumno centrados
+      doc.setTextColor(44, 36, 37);
+      doc.setFontSize(10);
+      const nombreCompleto = `${alumnoBoleta.nombre} ${alumnoBoleta.apellido_p} ${alumnoBoleta.apellido_m}`;
+      doc.setFont('helvetica', 'bold');
+      doc.text(`ALUMNO: ${nombreCompleto}`, 105, 46, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
       doc.text(
-        `Cuatrimestre ${bloque.cuatrimestre} — Periodo: ${bloque.periodo} | Promedio: ${bloque.promedio_cuatrimestre}`,
+        `MATRÍCULA: ${alumnoBoleta.matricula}   |   GRUPO: ${alumnoBoleta.academico?.grupo || ''} (${alumnoBoleta.academico?.cuatrimestre || ''} Cuatrimestre)`,
         105,
-        cursorY,
+        53,
+        { align: 'center' }
+      );
+      doc.text(`CARRERA: ${alumnoBoleta.academico?.carrera || ''}`, 105, 60, { align: 'center' });
+      doc.text(
+        `PERIODO: ${alumnoBoleta.academico?.periodo || ''}   |   TUTOR: ${alumnoBoleta.academico?.tutor_grupo || ''}`,
+        105,
+        67,
         { align: 'center' }
       );
 
-      autoTable(doc, {
-        startY: cursorY + 4,
-        head: [['Clave', 'Asignatura', 'P1', 'P2', 'P3', 'Final', 'Estatus']],
-        body: bloque.materias.map((m) => [
+      const columnas = [
+        { titulo: 'Clave', x: 10, w: 22 },
+        { titulo: 'Asignatura', x: 32, w: 64 },
+        { titulo: 'Docente', x: 96, w: 48 },
+        { titulo: 'P1', x: 144, w: 13 },
+        { titulo: 'P2', x: 157, w: 13 },
+        { titulo: 'P3', x: 170, w: 13 },
+        { titulo: 'Final', x: 183, w: 17 }
+      ];
+
+      const filas = (alumnoBoleta.cargas_academicas?.[0]?.materias || []).map((mat) => {
+        const n = notasEditadas[mat.clave] || {};
+        return [
+          mat.clave,
+          mat.nombre,
+          mat.profesor,
+          n.parcial_1 !== '' && n.parcial_1 !== null ? n.parcial_1 : '-',
+          n.parcial_2 !== '' && n.parcial_2 !== null ? n.parcial_2 : '-',
+          n.parcial_3 !== '' && n.parcial_3 !== null ? n.parcial_3 : '-',
+          n.final !== '' && n.final !== null ? n.final : '-'
+        ];
+      });
+
+      const finalY = dibujarTablaCentradaPDF(doc, 74, columnas, filas) + 12;
+
+      // Caja de Promedio General
+      doc.setFillColor(107, 42, 50);
+      doc.roundedRect(65, finalY, 80, 15, 3, 3, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`PROMEDIO GENERAL: ${promedioGen}`, 105, finalY + 10, { align: 'center' });
+
+      // Firmas institucionales
+      doc.setTextColor(80, 80, 80);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.line(30, finalY + 36, 90, finalY + 36);
+      doc.text('Control Escolar UTFV', 60, finalY + 41, { align: 'center' });
+
+      doc.line(120, finalY + 36, 180, finalY + 36);
+      doc.text('Tutor de Grupo', 150, finalY + 41, { align: 'center' });
+
+      doc.save(`Boleta_UTFV_${alumnoBoleta.matricula}.pdf`);
+      mostrarAlerta('exito', `Boleta_UTFV_${alumnoBoleta.matricula}.pdf descargada correctamente.`);
+    } catch (error) {
+      mostrarAlerta('error', `No se pudo generar el PDF: ${error.message}`);
+    }
+  };
+
+  // Generar PDF oficial del Kardex Académico (100% compatible con Vite)
+  const descargarKardexPDF = () => {
+    if (!alumnoKardex) return;
+    try {
+      const doc = new jsPDF();
+
+      doc.setFillColor(107, 42, 50);
+      doc.rect(0, 0, 210, 34, 'F');
+      doc.setFillColor(196, 143, 75);
+      doc.rect(0, 34, 210, 3, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 10, { align: 'center' });
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 18, { align: 'center' });
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Historial Académico Oficial (Kardex)', 105, 26, { align: 'center' });
+
+      const nombreCompleto = `${alumnoKardex.nombre} ${alumnoKardex.apellido_p} ${alumnoKardex.apellido_m}`;
+      doc.setTextColor(44, 36, 37);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`ESTUDIANTE: ${nombreCompleto}   |   MATRÍCULA: ${alumnoKardex.matricula}`, 105, 46, {
+        align: 'center'
+      });
+      doc.setFont('helvetica', 'normal');
+      doc.text(`CARRERA: ${alumnoKardex.academico?.carrera || ''}`, 105, 53, { align: 'center' });
+
+      let cursorY = 62;
+      const historial = alumnoKardex.kardex || [];
+
+      const columnasKardex = [
+        { titulo: 'Clave', x: 10, w: 24 },
+        { titulo: 'Asignatura', x: 34, w: 74 },
+        { titulo: 'P1', x: 108, w: 14 },
+        { titulo: 'P2', x: 122, w: 14 },
+        { titulo: 'P3', x: 136, w: 14 },
+        { titulo: 'Final', x: 150, w: 18 },
+        { titulo: 'Estatus', x: 168, w: 32 }
+      ];
+
+      historial.forEach((bloque) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(158, 27, 50);
+        doc.text(
+          `Cuatrimestre ${bloque.cuatrimestre} — Periodo: ${bloque.periodo} | Promedio: ${bloque.promedio_cuatrimestre}`,
+          105,
+          cursorY,
+          { align: 'center' }
+        );
+
+        const filasKardex = bloque.materias.map((m) => [
           m.clave,
           m.nombre,
           m.parcial_1 ?? '-',
@@ -638,19 +670,18 @@ function App() {
           m.parcial_3 ?? '-',
           m.final ?? '-',
           m.estatus_materia
-        ]),
-        theme: 'grid',
-        headStyles: { fillColor: [158, 27, 50], halign: 'center' },
-        styles: { halign: 'center', fontSize: 8.5 }
+        ]);
+
+        cursorY = dibujarTablaCentradaPDF(doc, cursorY + 4, columnasKardex, filasKardex) + 12;
       });
 
-      cursorY = doc.lastAutoTable.finalY + 12;
-    });
-
-    doc.save(`Kardex_UTFV_${alumnoKardex.matricula}.pdf`);
+      doc.save(`Kardex_UTFV_${alumnoKardex.matricula}.pdf`);
+      mostrarAlerta('exito', `Kardex_UTFV_${alumnoKardex.matricula}.pdf descargado correctamente.`);
+    } catch (error) {
+      mostrarAlerta('error', `No se pudo generar el PDF del Kardex: ${error.message}`);
+    }
   };
 
-  // ================= PANTALLA DE LOGIN ADMINISTRADOR =================
   if (!autenticado) {
     return (
       <div className="login-pantalla">
@@ -710,7 +741,6 @@ function App() {
     );
   }
 
-  // Filtrado de alumnos
   const alumnosFiltrados = alumnos.filter((a) => {
     const nombreCompleto = `${a.nombre} ${a.apellido_p} ${a.apellido_m}`.toLowerCase();
     const mat = (a.matricula || '').toLowerCase();
@@ -792,7 +822,6 @@ function App() {
         </div>
       )}
 
-      {/* PESTAÑA 1: PADRÓN GENERAL */}
       {pestana === 'padron' && (
         <section className="tarjeta">
           <h2>Padrón de Aspirantes y Alumnos Activos</h2>
@@ -906,7 +935,6 @@ function App() {
         </section>
       )}
 
-      {/* PESTAÑA 2: REGISTRO DE ASPIRANTES */}
       {pestana === 'aspirante' && (
         <section className="tarjeta">
           <h2>Registro de Nuevo Aspirante</h2>
@@ -1125,7 +1153,6 @@ function App() {
         </section>
       )}
 
-      {/* PESTAÑA 3: INSCRIPCIÓN Y CARGA ACADÉMICA */}
       {pestana === 'inscripcion' && (
         <section className="tarjeta">
           <h2>Inscripción Oficial y Asignación de Tira de Materias</h2>
@@ -1224,7 +1251,6 @@ function App() {
         </section>
       )}
 
-      {/* PESTAÑA 4: BOLETA Y CALIFICACIONES */}
       {pestana === 'boleta' && (
         <section className="tarjeta">
           <h2>Boleta de Calificaciones y Evaluación Parcial</h2>
@@ -1261,10 +1287,8 @@ function App() {
 
           {alumnoBoleta && (
             <div className="boleta-documento">
-              {/* MEMBRETE OFICIAL UTFV */}
               <MembreteUTFV tituloDocumento="BOLETA OFICIAL DE CALIFICACIONES" />
 
-              {/* DATOS CENTRADOS DEL ALUMNO */}
               <div className="boleta-datos-centrados">
                 <div>
                   <strong>Alumno</strong>
@@ -1292,7 +1316,6 @@ function App() {
                 </div>
               </div>
 
-              {/* TABLA CON TEXTO CENTRADO Y PROMEDIO AUTOMÁTICO */}
               <div className="tabla-contenedor">
                 <table className="tabla-boleta-centrada">
                   <thead>
@@ -1368,7 +1391,6 @@ function App() {
                 </table>
               </div>
 
-              {/* BARRA DE PROMEDIO GENERAL Y BOTONES UNIFICADOS */}
               <div className="boleta-resumen-barra">
                 <div className="promedio-caja">
                   <span>Promedio General Automático</span>
@@ -1423,7 +1445,6 @@ function App() {
         </section>
       )}
 
-      {/* PESTAÑA 5: KARDEX / REGISTRO ACADÉMICO */}
       {pestana === 'kardex' && (
         <section className="tarjeta">
           <h2>Registro Académico e Historial (Kardex)</h2>
