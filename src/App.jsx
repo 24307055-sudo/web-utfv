@@ -1,9 +1,128 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000/api/alumnos`;
 
+// Catálogo local de respaldo para municipios del Estado de México por prefijo de CP
+const PREFIJOS_MUNICIPIOS = {
+  '544': 'Nicolás Romero',
+  '529': 'Atizapán de Zaragoza',
+  '540': 'Tlalnepantla de Baz',
+  '541': 'Tlalnepantla de Baz',
+  '547': 'Cuautitlán Izcalli',
+  '548': 'Cuautitlán',
+  '549': 'Tultitlán',
+  '550': 'Ecatepec de Morelos',
+  '530': 'Naucalpan de Juárez',
+  '531': 'Naucalpan de Juárez',
+  '546': 'Tepotzotlán',
+  '543': 'Villa del Carbón',
+  '545': 'Isidro Fabela'
+};
+
+// Componente vectorial del Logotipo Institucional UTFV (colores exactos de la imagen)
+function LogoUTFV({ ancho = 135 }) {
+  return (
+    <svg width={ancho} viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg" aria-label="Logo UTFV">
+      {/* Tres puntos dorados */}
+      <circle cx="54" cy="24" r="11" fill="#C48F4B" />
+      <circle cx="82" cy="18" r="11" fill="#C48F4B" />
+      <circle cx="82" cy="44" r="11" fill="#C48F4B" />
+      {/* Letra U en dorado */}
+      <path
+        d="M44 58 H78 V108 C78 125 89 135 105 135 C121 135 132 125 132 108 V40 H166 V108 C166 144 140 166 105 166 C70 166 44 144 44 108 Z"
+        fill="#C48F4B"
+      />
+      {/* Letra T en vino oscuro */}
+      <path
+        d="M126 18 H246 V48 H203 V164 H195 C178 164 168 154 168 137 V48 H126 Z"
+        fill="#6B2A32"
+      />
+      {/* Letras FV en terracota */}
+      <text
+        x="212"
+        y="156"
+        fill="#A85327"
+        fontFamily="Arial Black, sans-serif"
+        fontWeight="900"
+        fontSize="76"
+      >
+        FV
+      </text>
+      {/* Línea divisoria dorada */}
+      <line x1="25" y1="174" x2="335" y2="174" stroke="#C48F4B" strokeWidth="2.5" />
+      {/* Textos institucionales */}
+      <text
+        x="180"
+        y="193"
+        textAnchor="middle"
+        fill="#4A4A4A"
+        fontFamily="Segoe UI, Arial, sans-serif"
+        fontWeight="700"
+        fontSize="14.5"
+        letterSpacing="1.2"
+      >
+        UNIVERSIDAD TECNOLÓGICA
+      </text>
+      <text
+        x="180"
+        y="215"
+        textAnchor="middle"
+        fill="#9E1B32"
+        fontFamily="Arial Black, sans-serif"
+        fontWeight="900"
+        fontSize="21.5"
+        letterSpacing="0.8"
+      >
+        FIDEL VELÁZQUEZ
+      </text>
+    </svg>
+  );
+}
+
+// Componente Membrete Oficial UTFV
+function MembreteUTFV({ tituloDocumento }) {
+  const fechaHoy = new Date().toLocaleDateString('es-MX', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  return (
+    <div className="membrete-oficial">
+      <div className="membrete-contenido">
+        <LogoUTFV ancho={120} />
+        <div className="membrete-textos">
+          <div className="membrete-gob">GOBIERNO DEL ESTADO DE MÉXICO</div>
+          <div className="membrete-uni">UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ</div>
+          <div className="membrete-depto">
+            Dirección de Servicios Escolares y Control Académico
+          </div>
+          <div className="membrete-doc-titulo">{tituloDocumento}</div>
+        </div>
+        <div style={{ textAlign: 'right', fontSize: '0.8rem', color: '#66585a' }}>
+          <strong>Fecha de emisión:</strong>
+          <div>{fechaHoy}</div>
+          <div style={{ marginTop: '4px', color: '#9E1B32', fontWeight: '700' }}>
+            Nicolás Romero, Méx.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  // Estado de autenticación de Administrador
+  const [autenticado, setAutenticado] = useState(
+    () => sessionStorage.getItem('utfv_admin_auth') === 'true'
+  );
+  const [loginData, setLoginData] = useState({ usuario: '', password: '' });
+  const [errorLogin, setErrorLogin] = useState('');
+  const [validandoLogin, setValidandoLogin] = useState(false);
+
   const [alumnos, setAlumnos] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [pestana, setPestana] = useState('padron');
@@ -13,7 +132,7 @@ function App() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstatus, setFiltroEstatus] = useState('TODOS');
 
-  // Formulario de nuevo aspirante
+  // Formulario de nuevo aspirante + automatización CP
   const [nuevoAspirante, setNuevoAspirante] = useState({
     nombre: '',
     apellido_p: '',
@@ -28,8 +147,11 @@ function App() {
     colonia: '',
     no: '',
     c_p: '',
-    municipio: 'Nicolás Romero'
+    municipio: 'Nicolás Romero',
+    estado: 'Estado de México'
   });
+  const [coloniasDisponibles, setColoniasDisponibles] = useState([]);
+  const [buscandoCP, setBuscandoCP] = useState(false);
 
   // Formulario de inscripción y carga académica
   const [inscripcion, setInscripcion] = useState({
@@ -44,10 +166,42 @@ function App() {
   const [matriculaBusqueda, setMatriculaBusqueda] = useState('');
   const [alumnoBoleta, setAlumnoBoleta] = useState(null);
   const [notasEditadas, setNotasEditadas] = useState({});
+  const [edicionBloqueada, setEdicionBloqueada] = useState(false);
+
+  // Consulta de Kardex
+  const [alumnoKardex, setAlumnoKardex] = useState(null);
 
   const mostrarAlerta = (tipo, texto) => {
     setMensaje({ tipo, texto });
     setTimeout(() => setMensaje(null), 5000);
+  };
+
+  // Manejar inicio de sesión de Administrador
+  const manejarLogin = async (e) => {
+    e.preventDefault();
+    setErrorLogin('');
+    setValidandoLogin(true);
+    try {
+      await axios.post(`${API_URL}/login`, loginData);
+      sessionStorage.setItem('utfv_admin_auth', 'true');
+      setAutenticado(true);
+    } catch (error) {
+      // Respaldo por si el servidor aún está despertando
+      if (loginData.usuario === 'admin' && loginData.password === 'utfv2026') {
+        sessionStorage.setItem('utfv_admin_auth', 'true');
+        setAutenticado(true);
+      } else {
+        setErrorLogin('Usuario o contraseña de administrador incorrectos.');
+      }
+    } finally {
+      setValidandoLogin(false);
+    }
+  };
+
+  const cerrarSesion = () => {
+    sessionStorage.removeItem('utfv_admin_auth');
+    setAutenticado(false);
+    setLoginData({ usuario: '', password: '' });
   };
 
   const cargarAlumnos = async () => {
@@ -56,19 +210,71 @@ function App() {
       const res = await axios.get(API_URL);
       setAlumnos(res.data);
     } catch (error) {
-      mostrarAlerta('error', 'No se pudo conectar con el servidor en el puerto 3000.');
+      mostrarAlerta('error', 'No se pudo conectar con el servidor.');
     } finally {
       setCargando(false);
     }
   };
 
   useEffect(() => {
-    cargarAlumnos();
-  }, []);
+    if (autenticado) {
+      cargarAlumnos();
+    }
+  }, [autenticado]);
+
+  // Automatización de Código Postal (5 dígitos)
+  const manejarCambioCP = async (valorRaw) => {
+    const cpLimpio = valorRaw.replace(/\D/g, '').slice(0, 5);
+    setNuevoAspirante((prev) => ({ ...prev, c_p: cpLimpio }));
+
+    if (cpLimpio.length < 5) {
+      setColoniasDisponibles([]);
+      return;
+    }
+
+    setBuscandoCP(true);
+    const prefijo = cpLimpio.slice(0, 3);
+    const municipioInferido = PREFIJOS_MUNICIPIOS[prefijo] || '';
+
+    try {
+      const res = await axios.get(`https://api.zippopotam.us/mx/${cpLimpio}`);
+      const lugares = res.data?.places || [];
+      const estadoApi = res.data?.state || 'Estado de México';
+      const listaColonias = lugares.map((l) => l['place name']);
+
+      setColoniasDisponibles(listaColonias);
+      setNuevoAspirante((prev) => ({
+        ...prev,
+        c_p: cpLimpio,
+        estado: estadoApi === 'México' ? 'Estado de México' : estadoApi,
+        municipio: municipioInferido || prev.municipio,
+        colonia: listaColonias[0] || ''
+      }));
+      mostrarAlerta('exito', `CP ${cpLimpio} localizado: ${listaColonias.length} colonia(s) encontradas.`);
+    } catch (error) {
+      setColoniasDisponibles([]);
+      if (municipioInferido) {
+        setNuevoAspirante((prev) => ({
+          ...prev,
+          c_p: cpLimpio,
+          municipio: municipioInferido,
+          estado: 'Estado de México'
+        }));
+      }
+      mostrarAlerta('error', 'CP no encontrado en el catálogo automático; puedes escribir la colonia manualmente.');
+    } finally {
+      setBuscandoCP(false);
+    }
+  };
 
   // Registrar nuevo aspirante
   const manejarRegistroAspirante = async (e) => {
     e.preventDefault();
+    if (nuevoAspirante.telefono && nuevoAspirante.telefono.length !== 10) {
+      mostrarAlerta('error', 'El teléfono celular debe tener exactamente 10 dígitos.');
+      return;
+    }
+
     try {
       const payload = {
         nombre: nuevoAspirante.nombre.trim(),
@@ -85,7 +291,8 @@ function App() {
           colonia: nuevoAspirante.colonia.trim(),
           no: Number(nuevoAspirante.no),
           c_p: Number(nuevoAspirante.c_p),
-          municipio: nuevoAspirante.municipio.trim()
+          municipio: nuevoAspirante.municipio.trim(),
+          estado: nuevoAspirante.estado.trim()
         }
       };
 
@@ -105,8 +312,10 @@ function App() {
         colonia: '',
         no: '',
         c_p: '',
-        municipio: 'Nicolás Romero'
+        municipio: 'Nicolás Romero',
+        estado: 'Estado de México'
       });
+      setColoniasDisponibles([]);
       cargarAlumnos();
       setPestana('padron');
     } catch (error) {
@@ -155,8 +364,8 @@ function App() {
     }
   };
 
-  // Buscar boleta por matrícula
-  const consultarBoleta = async (mat) => {
+  // Buscar boleta y kardex por matrícula
+  const consultarBoleta = async (mat, irAPestana = null) => {
     const matriculaObjetivo = (mat || matriculaBusqueda).trim();
     if (!matriculaObjetivo) {
       mostrarAlerta('error', 'Ingresa o selecciona una matrícula.');
@@ -165,66 +374,341 @@ function App() {
     try {
       const res = await axios.get(`${API_URL}/boleta/${matriculaObjetivo}`);
       setAlumnoBoleta(res.data);
+      setAlumnoKardex(res.data);
       setMatriculaBusqueda(matriculaObjetivo);
 
       const mapaNotas = {};
+      let tieneCalificacionesGuardadas = false;
       const carga = res.data.cargas_academicas?.[0];
+
       if (carga) {
         carga.materias.forEach((m) => {
+          const p1 = m.calificaciones?.parcial_1 ?? '';
+          const p2 = m.calificaciones?.parcial_2 ?? '';
+          const p3 = m.calificaciones?.parcial_3 ?? '';
+          const fin = m.calificaciones?.final ?? '';
+          if (p1 !== '' || p2 !== '' || p3 !== '' || fin !== '') {
+            tieneCalificacionesGuardadas = true;
+          }
           mapaNotas[m.clave] = {
-            parcial_1: m.calificaciones?.parcial_1 ?? '',
-            parcial_2: m.calificaciones?.parcial_2 ?? '',
-            parcial_3: m.calificaciones?.parcial_3 ?? '',
-            final: m.calificaciones?.final ?? ''
+            parcial_1: p1,
+            parcial_2: p2,
+            parcial_3: p3,
+            final: fin
           };
         });
       }
+
       setNotasEditadas(mapaNotas);
+      // Si ya tiene calificaciones guardadas, se bloquea hasta presionar "Corregir Calificaciones"
+      setEdicionBloqueada(tieneCalificacionesGuardadas);
+      if (irAPestana) setPestana(irAPestana);
     } catch (error) {
       setAlumnoBoleta(null);
+      setAlumnoKardex(null);
       mostrarAlerta('error', 'No se encontró ningún alumno activo con esa matrícula.');
     }
   };
 
-  // Guardar calificación de una materia
-  const guardarCalificacionMateria = async (claveMateria) => {
-    if (!alumnoBoleta) return;
-    const notasMateria = notasEditadas[claveMateria];
-    const parciales = [
-      { key: 'parcial_1', num: 1 },
-      { key: 'parcial_2', num: 2 },
-      { key: 'parcial_3', num: 3 },
-      { key: 'final', num: 'final' }
-    ];
+  // Cálculo automático de promedio por materia al capturar parciales
+  const cambiarNotaInput = (claveMateria, campo, valor) => {
+    setNotasEditadas((prev) => {
+      const actual = { ...prev[claveMateria], [campo]: valor };
 
-    try {
-      for (const p of parciales) {
-        const valorRaw = notasMateria[p.key];
-        const valorNumerico = valorRaw === '' || valorRaw === null ? null : Number(valorRaw);
-        await axios.put(`${API_URL}/calificaciones`, {
-          matricula: alumnoBoleta.matricula,
-          claveMateria,
-          numeroParcial: p.num,
-          calificacion: valorNumerico
-        });
+      if (campo !== 'final') {
+        const parcialesValidos = [actual.parcial_1, actual.parcial_2, actual.parcial_3]
+          .filter((v) => v !== '' && v !== null && !isNaN(Number(v)))
+          .map(Number);
+
+        if (parcialesValidos.length > 0) {
+          const suma = parcialesValidos.reduce((acc, n) => acc + n, 0);
+          actual.final = (suma / parcialesValidos.length).toFixed(1);
+        } else {
+          actual.final = '';
+        }
       }
-      mostrarAlerta('exito', `Calificaciones guardadas para la materia ${claveMateria}.`);
-      consultarBoleta(alumnoBoleta.matricula);
+
+      return {
+        ...prev,
+        [claveMateria]: actual
+      };
+    });
+  };
+
+  // Guardar TODAS las calificaciones de una sola vez + actualizar Kardex
+  const guardarTodasCalificaciones = async () => {
+    if (!alumnoBoleta) return;
+    try {
+      const res = await axios.put(`${API_URL}/calificaciones-masivo`, {
+        matricula: alumnoBoleta.matricula,
+        notas: notasEditadas
+      });
+      setAlumnoBoleta(res.data.alumno);
+      setAlumnoKardex(res.data.alumno);
+      setEdicionBloqueada(true);
+      mostrarAlerta(
+        'exito',
+        'Todas las calificaciones se guardaron de una sola vez y se actualizaron en el Kardex.'
+      );
       cargarAlumnos();
     } catch (error) {
-      mostrarAlerta('error', 'Error al guardar la calificación.');
+      mostrarAlerta('error', 'Error al guardar las calificaciones.');
     }
   };
 
-  const cambiarNotaInput = (claveMateria, campo, valor) => {
-    setNotasEditadas((prev) => ({
-      ...prev,
-      [claveMateria]: {
-        ...prev[claveMateria],
-        [campo]: valor
-      }
-    }));
+  // Guardar explícitamente en el registro académico (Kardex)
+  const guardarEnKardex = async () => {
+    if (!alumnoBoleta) return;
+    try {
+      const res = await axios.post(`${API_URL}/kardex/${alumnoBoleta.matricula}`);
+      setAlumnoBoleta(res.data.alumno);
+      setAlumnoKardex(res.data.alumno);
+      mostrarAlerta('exito', 'Registro académico consolidado y guardado en el Kardex.');
+      cargarAlumnos();
+    } catch (error) {
+      mostrarAlerta('error', 'No se pudo actualizar el Kardex.');
+    }
   };
+
+  // Calcular promedio general de la boleta en tiempo real
+  const calcularPromedioGeneral = () => {
+    const lista = Object.values(notasEditadas)
+      .map((n) => n.final)
+      .filter((f) => f !== '' && f !== null && !isNaN(Number(f)))
+      .map(Number);
+
+    if (lista.length === 0) return '0.0';
+    const suma = lista.reduce((acc, val) => acc + val, 0);
+    return (suma / lista.length).toFixed(2);
+  };
+
+  // Generar PDF oficial con membrete de la Boleta
+  const descargarBoletaPDF = () => {
+    if (!alumnoBoleta) return;
+    const doc = new jsPDF();
+    const promedioGen = calcularPromedioGeneral();
+
+    // Encabezado / Membrete institucional
+    doc.setFillColor(158, 27, 50); // Guinda UTFV
+    doc.rect(0, 0, 210, 34, 'F');
+    doc.setFillColor(196, 143, 75); // Dorado UTFV
+    doc.rect(0, 34, 210, 3, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 10, { align: 'center' });
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 18, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Dirección de Servicios Escolares • Boleta Oficial de Calificaciones', 105, 26, {
+      align: 'center'
+    });
+
+    // Datos del alumno centrados
+    doc.setTextColor(44, 36, 37);
+    doc.setFontSize(10);
+    const nombreCompleto = `${alumnoBoleta.nombre} ${alumnoBoleta.apellido_p} ${alumnoBoleta.apellido_m}`;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`ALUMNO: ${nombreCompleto}`, 105, 47, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      `MATRÍCULA: ${alumnoBoleta.matricula}   |   GRUPO: ${alumnoBoleta.academico?.grupo} (${alumnoBoleta.academico?.cuatrimestre} Cuatrimestre)`,
+      105,
+      54,
+      { align: 'center' }
+    );
+    doc.text(`CARRERA: ${alumnoBoleta.academico?.carrera}`, 105, 61, { align: 'center' });
+    doc.text(
+      `PERIODO: ${alumnoBoleta.academico?.periodo}   |   TUTOR: ${alumnoBoleta.academico?.tutor_grupo}`,
+      105,
+      68,
+      { align: 'center' }
+    );
+
+    const filas = (alumnoBoleta.cargas_academicas?.[0]?.materias || []).map((mat) => {
+      const n = notasEditadas[mat.clave] || {};
+      return [
+        mat.clave,
+        mat.nombre,
+        mat.profesor,
+        n.parcial_1 !== '' && n.parcial_1 !== null ? n.parcial_1 : '-',
+        n.parcial_2 !== '' && n.parcial_2 !== null ? n.parcial_2 : '-',
+        n.parcial_3 !== '' && n.parcial_3 !== null ? n.parcial_3 : '-',
+        n.final !== '' && n.final !== null ? n.final : '-'
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 75,
+      head: [['Clave', 'Asignatura', 'Docente', 'Parcial 1', 'Parcial 2', 'Parcial 3', 'Final']],
+      body: filas,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [158, 27, 50],
+        textColor: [255, 255, 255],
+        halign: 'center',
+        fontStyle: 'bold'
+      },
+      styles: {
+        halign: 'center',
+        valign: 'middle',
+        fontSize: 8.5,
+        cellPadding: 3
+      },
+      alternateRowStyles: {
+        fillColor: [253, 248, 248]
+      }
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 12;
+
+    // Caja de Promedio General
+    doc.setFillColor(107, 42, 50);
+    doc.roundedRect(65, finalY, 80, 16, 3, 3, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`PROMEDIO GENERAL: ${promedioGen}`, 105, finalY + 10.5, { align: 'center' });
+
+    // Firmas institucionales
+    doc.setTextColor(80, 80, 80);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.line(30, finalY + 38, 90, finalY + 38);
+    doc.text('Control Escolar UTFV', 60, finalY + 43, { align: 'center' });
+
+    doc.line(120, finalY + 38, 180, finalY + 38);
+    doc.text('Tutor de Grupo', 150, finalY + 43, { align: 'center' });
+
+    doc.save(`Boleta_UTFV_${alumnoBoleta.matricula}.pdf`);
+  };
+
+  // Generar PDF oficial del Kardex Académico
+  const descargarKardexPDF = () => {
+    if (!alumnoKardex) return;
+    const doc = new jsPDF();
+
+    doc.setFillColor(107, 42, 50);
+    doc.rect(0, 0, 210, 34, 'F');
+    doc.setFillColor(196, 143, 75);
+    doc.rect(0, 34, 210, 3, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 10, { align: 'center' });
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 18, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Historial Académico Oficial (Kardex)', 105, 26, { align: 'center' });
+
+    const nombreCompleto = `${alumnoKardex.nombre} ${alumnoKardex.apellido_p} ${alumnoKardex.apellido_m}`;
+    doc.setTextColor(44, 36, 37);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`ESTUDIANTE: ${nombreCompleto}   |   MATRÍCULA: ${alumnoKardex.matricula}`, 105, 46, {
+      align: 'center'
+    });
+    doc.setFont('helvetica', 'normal');
+    doc.text(`CARRERA: ${alumnoKardex.academico?.carrera || ''}`, 105, 53, { align: 'center' });
+
+    let cursorY = 62;
+    const historial = alumnoKardex.kardex || [];
+
+    historial.forEach((bloque) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(158, 27, 50);
+      doc.text(
+        `Cuatrimestre ${bloque.cuatrimestre} — Periodo: ${bloque.periodo} | Promedio: ${bloque.promedio_cuatrimestre}`,
+        105,
+        cursorY,
+        { align: 'center' }
+      );
+
+      autoTable(doc, {
+        startY: cursorY + 4,
+        head: [['Clave', 'Asignatura', 'P1', 'P2', 'P3', 'Final', 'Estatus']],
+        body: bloque.materias.map((m) => [
+          m.clave,
+          m.nombre,
+          m.parcial_1 ?? '-',
+          m.parcial_2 ?? '-',
+          m.parcial_3 ?? '-',
+          m.final ?? '-',
+          m.estatus_materia
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [158, 27, 50], halign: 'center' },
+        styles: { halign: 'center', fontSize: 8.5 }
+      });
+
+      cursorY = doc.lastAutoTable.finalY + 12;
+    });
+
+    doc.save(`Kardex_UTFV_${alumnoKardex.matricula}.pdf`);
+  };
+
+  // ================= PANTALLA DE LOGIN ADMINISTRADOR =================
+  if (!autenticado) {
+    return (
+      <div className="login-pantalla">
+        <div className="login-tarjeta">
+          <LogoUTFV ancho={165} />
+          <h1 className="login-titulo">Acceso Administrativo</h1>
+          <p className="login-subtitulo">
+            Sistema de Control Escolar y Gestión Académica
+          </p>
+
+          {errorLogin && (
+            <div className="alerta error" style={{ textAlign: 'left' }}>
+              <span>{errorLogin}</span>
+            </div>
+          )}
+
+          <form onSubmit={manejarLogin} className="login-form">
+            <div className="campo-grupo">
+              <label>Usuario Administrador</label>
+              <input
+                type="text"
+                className="input-control"
+                placeholder="Ingresa tu usuario"
+                required
+                value={loginData.usuario}
+                onChange={(e) => setLoginData({ ...loginData, usuario: e.target.value })}
+              />
+            </div>
+
+            <div className="campo-grupo">
+              <label>Contraseña</label>
+              <input
+                type="password"
+                className="input-control"
+                placeholder="••••••••"
+                required
+                value={loginData.password}
+                onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primario"
+              style={{ width: '100%', padding: '12px', fontSize: '1rem' }}
+              disabled={validandoLogin}
+            >
+              {validandoLogin ? 'Verificando acceso...' : 'Iniciar Sesión'}
+            </button>
+          </form>
+
+          <div className="login-ayuda">
+            Acceso exclusivo para personal autorizado de la UTFV
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Filtrado de alumnos
   const alumnosFiltrados = alumnos.filter((a) => {
@@ -243,14 +727,23 @@ function App() {
   return (
     <div className="contenedor-principal">
       <header className="encabezado">
-        <div>
-          <h1>Sistema de Gestión Académica — UTFV</h1>
-          <p>Universidad Tecnológica Fidel Vázquez • Control Escolar y Cargas Académicas</p>
+        <div className="encabezado-izquierda">
+          <div className="logo-badge-blanco">
+            <LogoUTFV ancho={92} />
+          </div>
+          <div>
+            <h1>Sistema de Gestión Académica — UTFV</h1>
+            <p>Universidad Tecnológica Fidel Velázquez • Control Escolar y Kardex</p>
+          </div>
         </div>
+
         <div className="estadisticas-barra">
           <div className="stat-chip">Total: {alumnos.length}</div>
           <div className="stat-chip">Aspirantes: {aspirantesDisponibles.length}</div>
           <div className="stat-chip">Activos: {alumnosActivos.length}</div>
+          <button className="btn-salir" onClick={cerrarSesion}>
+            Cerrar Sesión
+          </button>
         </div>
       </header>
 
@@ -279,6 +772,12 @@ function App() {
         >
           4. Boleta y Calificaciones
         </button>
+        <button
+          className={`btn-tab ${pestana === 'kardex' ? 'activo' : ''}`}
+          onClick={() => setPestana('kardex')}
+        >
+          5. Kardex / Historial Académico
+        </button>
       </nav>
 
       {mensaje && (
@@ -301,6 +800,7 @@ function App() {
             <input
               type="text"
               className="input-control"
+              style={{ flex: 1, minWidth: '240px' }}
               placeholder="Buscar por nombre, apellidos o matrícula..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -373,15 +873,20 @@ function App() {
                                 Inscribir
                               </button>
                             ) : (
-                              <button
-                                className="btn btn-dorado"
-                                onClick={() => {
-                                  setPestana('boleta');
-                                  consultarBoleta(alumno.matricula);
-                                }}
-                              >
-                                Ver Boleta
-                              </button>
+                              <>
+                                <button
+                                  className="btn btn-dorado"
+                                  onClick={() => consultarBoleta(alumno.matricula, 'boleta')}
+                                >
+                                  Boleta
+                                </button>
+                                <button
+                                  className="btn btn-vino"
+                                  onClick={() => consultarBoleta(alumno.matricula, 'kardex')}
+                                >
+                                  Kardex
+                                </button>
+                              </>
                             )}
                             <button
                               className="btn btn-peligro"
@@ -490,13 +995,22 @@ function App() {
                 </select>
               </div>
               <div className="campo-grupo">
-                <label>Teléfono</label>
+                <label>
+                  <span>Teléfono Celular (10 dígitos)</span>
+                  <span className="ayuda-campo">{nuevoAspirante.telefono.length}/10</span>
+                </label>
                 <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  pattern="[0-9]{10}"
+                  placeholder="Ej. 5512345678"
                   className="input-control"
                   value={nuevoAspirante.telefono}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, telefono: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const soloNumeros = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setNuevoAspirante({ ...nuevoAspirante, telefono: soloNumeros });
+                  }}
                 />
               </div>
               <div className="campo-grupo">
@@ -512,8 +1026,74 @@ function App() {
               </div>
             </div>
 
-            <p className="subtitulo-seccion">Domicilio</p>
+            <p className="subtitulo-seccion">Domicilio (Código Postal Automatizado)</p>
             <div className="grid-formulario">
+              <div className="campo-grupo">
+                <label>
+                  <span>Código Postal (5 dígitos)</span>
+                  {buscandoCP && <span className="ayuda-campo">Buscando...</span>}
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={5}
+                  placeholder="Ej. 54400"
+                  className="input-control"
+                  value={nuevoAspirante.c_p}
+                  onChange={(e) => manejarCambioCP(e.target.value)}
+                />
+              </div>
+
+              <div className="campo-grupo">
+                <label>Colonia</label>
+                {coloniasDisponibles.length > 0 ? (
+                  <select
+                    className="select-control"
+                    value={nuevoAspirante.colonia}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, colonia: e.target.value })
+                    }
+                  >
+                    {coloniasDisponibles.map((col, idx) => (
+                      <option key={idx} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="input-control"
+                    placeholder="Escribe el CP arriba o ingresa colonia"
+                    value={nuevoAspirante.colonia}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, colonia: e.target.value })
+                    }
+                  />
+                )}
+              </div>
+
+              <div className="campo-grupo">
+                <label>Municipio</label>
+                <input
+                  className="input-control"
+                  value={nuevoAspirante.municipio}
+                  onChange={(e) =>
+                    setNuevoAspirante({ ...nuevoAspirante, municipio: e.target.value })
+                  }
+                />
+              </div>
+
+              <div className="campo-grupo">
+                <label>Estado</label>
+                <input
+                  className="input-control"
+                  value={nuevoAspirante.estado}
+                  onChange={(e) =>
+                    setNuevoAspirante({ ...nuevoAspirante, estado: e.target.value })
+                  }
+                />
+              </div>
+
               <div className="campo-grupo">
                 <label>Calle</label>
                 <input
@@ -524,16 +1104,7 @@ function App() {
                   }
                 />
               </div>
-              <div className="campo-grupo">
-                <label>Colonia</label>
-                <input
-                  className="input-control"
-                  value={nuevoAspirante.colonia}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, colonia: e.target.value })
-                  }
-                />
-              </div>
+
               <div className="campo-grupo">
                 <label>Número Exterior</label>
                 <input
@@ -542,27 +1113,6 @@ function App() {
                   value={nuevoAspirante.no}
                   onChange={(e) =>
                     setNuevoAspirante({ ...nuevoAspirante, no: e.target.value })
-                  }
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Código Postal</label>
-                <input
-                  type="number"
-                  className="input-control"
-                  value={nuevoAspirante.c_p}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, c_p: e.target.value })
-                  }
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Municipio</label>
-                <input
-                  className="input-control"
-                  value={nuevoAspirante.municipio}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, municipio: e.target.value })
                   }
                 />
               </div>
@@ -710,32 +1260,41 @@ function App() {
           </div>
 
           {alumnoBoleta && (
-            <>
-              <div className="boleta-datos">
+            <div className="boleta-documento">
+              {/* MEMBRETE OFICIAL UTFV */}
+              <MembreteUTFV tituloDocumento="BOLETA OFICIAL DE CALIFICACIONES" />
+
+              {/* DATOS CENTRADOS DEL ALUMNO */}
+              <div className="boleta-datos-centrados">
                 <div>
-                  <strong>Alumno:</strong> {alumnoBoleta.nombre} {alumnoBoleta.apellido_p}{' '}
-                  {alumnoBoleta.apellido_m}
+                  <strong>Alumno</strong>
+                  {alumnoBoleta.nombre} {alumnoBoleta.apellido_p} {alumnoBoleta.apellido_m}
                 </div>
                 <div>
-                  <strong>Matrícula:</strong> {alumnoBoleta.matricula}
+                  <strong>Matrícula</strong>
+                  {alumnoBoleta.matricula}
                 </div>
                 <div>
-                  <strong>Carrera:</strong> {alumnoBoleta.academico?.carrera}
+                  <strong>Carrera</strong>
+                  {alumnoBoleta.academico?.carrera}
                 </div>
                 <div>
-                  <strong>Grupo:</strong> {alumnoBoleta.academico?.grupo} (
-                  {alumnoBoleta.academico?.cuatrimestre} Cuatrimestre)
+                  <strong>Grupo y Cuatrimestre</strong>
+                  {alumnoBoleta.academico?.grupo} ({alumnoBoleta.academico?.cuatrimestre})
                 </div>
                 <div>
-                  <strong>Periodo:</strong> {alumnoBoleta.academico?.periodo}
+                  <strong>Periodo Escolar</strong>
+                  {alumnoBoleta.academico?.periodo}
                 </div>
                 <div>
-                  <strong>Tutor:</strong> {alumnoBoleta.academico?.tutor_grupo}
+                  <strong>Tutor de Grupo</strong>
+                  {alumnoBoleta.academico?.tutor_grupo}
                 </div>
               </div>
 
+              {/* TABLA CON TEXTO CENTRADO Y PROMEDIO AUTOMÁTICO */}
               <div className="tabla-contenedor">
-                <table>
+                <table className="tabla-boleta-centrada">
                   <thead>
                     <tr>
                       <th>Clave</th>
@@ -744,8 +1303,7 @@ function App() {
                       <th>Parcial 1</th>
                       <th>Parcial 2</th>
                       <th>Parcial 3</th>
-                      <th>Final</th>
-                      <th>Guardar</th>
+                      <th>Promedio Materia</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -764,6 +1322,7 @@ function App() {
                               step="0.1"
                               min="0"
                               max="10"
+                              disabled={edicionBloqueada}
                               className="input-calificacion"
                               value={notas.parcial_1 ?? ''}
                               onChange={(e) =>
@@ -777,6 +1336,7 @@ function App() {
                               step="0.1"
                               min="0"
                               max="10"
+                              disabled={edicionBloqueada}
                               className="input-calificacion"
                               value={notas.parcial_2 ?? ''}
                               onChange={(e) =>
@@ -790,6 +1350,7 @@ function App() {
                               step="0.1"
                               min="0"
                               max="10"
+                              disabled={edicionBloqueada}
                               className="input-calificacion"
                               value={notas.parcial_3 ?? ''}
                               onChange={(e) =>
@@ -797,26 +1358,8 @@ function App() {
                               }
                             />
                           </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="10"
-                              className="input-calificacion"
-                              value={notas.final ?? ''}
-                              onChange={(e) =>
-                                cambiarNotaInput(mat.clave, 'final', e.target.value)
-                              }
-                            />
-                          </td>
-                          <td>
-                            <button
-                              className="btn btn-primario"
-                              onClick={() => guardarCalificacionMateria(mat.clave)}
-                            >
-                              Guardar
-                            </button>
+                          <td className="calificacion-final-celda">
+                            {notas.final !== '' && notas.final !== null ? notas.final : '—'}
                           </td>
                         </tr>
                       );
@@ -824,7 +1367,183 @@ function App() {
                   </tbody>
                 </table>
               </div>
-            </>
+
+              {/* BARRA DE PROMEDIO GENERAL Y BOTONES UNIFICADOS */}
+              <div className="boleta-resumen-barra">
+                <div className="promedio-caja">
+                  <span>Promedio General Automático</span>
+                  <strong>{calcularPromedioGeneral()}</strong>
+                </div>
+
+                <div className="boleta-botones-acciones">
+                  {!edicionBloqueada ? (
+                    <button
+                      type="button"
+                      className="btn btn-dorado"
+                      onClick={guardarTodasCalificaciones}
+                    >
+                      Guardar Todas las Calificaciones
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-terracota"
+                      onClick={() => {
+                        setEdicionBloqueada(false);
+                        mostrarAlerta(
+                          'exito',
+                          'Modo de corrección activado. Edita las notas y presiona Guardar.'
+                        );
+                      }}
+                    >
+                      Corregir Calificaciones
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn btn-dorado"
+                    onClick={descargarBoletaPDF}
+                  >
+                    Descargar Boleta en PDF
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-vino"
+                    style={{ border: '1px solid #C48F4B' }}
+                    onClick={guardarEnKardex}
+                  >
+                    Guardar en Kardex
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* PESTAÑA 5: KARDEX / REGISTRO ACADÉMICO */}
+      {pestana === 'kardex' && (
+        <section className="tarjeta">
+          <h2>Registro Académico e Historial (Kardex)</h2>
+
+          <div className="filtros-barra">
+            <select
+              className="select-control"
+              value={matriculaBusqueda}
+              onChange={(e) => {
+                setMatriculaBusqueda(e.target.value);
+                if (e.target.value) consultarBoleta(e.target.value);
+              }}
+            >
+              <option value="">-- Seleccionar alumno inscrito --</option>
+              {alumnosActivos.map((al) => (
+                <option key={al._id} value={al.matricula}>
+                  {al.matricula} — {al.nombre} {al.apellido_p} {al.apellido_m}
+                </option>
+              ))}
+            </select>
+
+            <button className="btn btn-primario" onClick={() => consultarBoleta()}>
+              Consultar Kardex
+            </button>
+
+            {alumnoKardex && (
+              <button className="btn btn-dorado" onClick={descargarKardexPDF}>
+                Descargar Kardex en PDF
+              </button>
+            )}
+          </div>
+
+          {alumnoKardex && (
+            <div className="boleta-documento">
+              <MembreteUTFV tituloDocumento="KARDEX — HISTORIAL ACADÉMICO OFICIAL" />
+
+              <div className="boleta-datos-centrados">
+                <div>
+                  <strong>Estudiante</strong>
+                  {alumnoKardex.nombre} {alumnoKardex.apellido_p} {alumnoKardex.apellido_m}
+                </div>
+                <div>
+                  <strong>Matrícula</strong>
+                  {alumnoKardex.matricula}
+                </div>
+                <div>
+                  <strong>Programa Educativo</strong>
+                  {alumnoKardex.academico?.carrera}
+                </div>
+                <div>
+                  <strong>Estatus Académico</strong>
+                  {alumnoKardex.estatus}
+                </div>
+              </div>
+
+              {(alumnoKardex.kardex || []).length === 0 ? (
+                <p style={{ textAlign: 'center', padding: '20px' }}>
+                  Aún no hay registros consolidados en el Kardex. Ve a la pestaña de Boleta y
+                  guarda las calificaciones.
+                </p>
+              ) : (
+                alumnoKardex.kardex.map((bloque, idx) => (
+                  <div key={idx} className="kardex-bloque">
+                    <div className="kardex-encabezado-periodo">
+                      <h3>
+                        Cuatrimestre {bloque.cuatrimestre} • Periodo: {bloque.periodo}
+                      </h3>
+                      <span className="badge badge-activo">
+                        Promedio del Cuatrimestre: {bloque.promedio_cuatrimestre}
+                      </span>
+                    </div>
+
+                    <div className="tabla-contenedor">
+                      <table className="tabla-boleta-centrada">
+                        <thead>
+                          <tr>
+                            <th>Clave</th>
+                            <th>Asignatura</th>
+                            <th>Docente</th>
+                            <th>P1</th>
+                            <th>P2</th>
+                            <th>P3</th>
+                            <th>Final</th>
+                            <th>Estatus</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bloque.materias.map((m) => (
+                            <tr key={m.clave}>
+                              <td>
+                                <strong>{m.clave}</strong>
+                              </td>
+                              <td>{m.nombre}</td>
+                              <td>{m.profesor}</td>
+                              <td>{m.parcial_1 ?? '-'}</td>
+                              <td>{m.parcial_2 ?? '-'}</td>
+                              <td>{m.parcial_3 ?? '-'}</td>
+                              <td className="calificacion-final-celda">{m.final ?? '-'}</td>
+                              <td>
+                                <span
+                                  className={`badge ${
+                                    m.estatus_materia === 'ACREDITADA'
+                                      ? 'badge-aprobada'
+                                      : m.estatus_materia === 'NO ACREDITADA'
+                                      ? 'badge-reprobada'
+                                      : 'badge-aspirante'
+                                  }`}
+                                >
+                                  {m.estatus_materia}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </section>
       )}
@@ -833,3 +1552,4 @@ function App() {
 }
 
 export default App;
+
