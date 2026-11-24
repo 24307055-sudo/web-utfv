@@ -4,7 +4,6 @@ import { jsPDF } from 'jspdf';
 
 const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000/api/alumnos`;
 
-// Catálogo de carreras, grupos y tutores asignados
 const CARRERAS_INFO = {
   IRD: {
     nombre: 'T.S.U. en Infraestructura de Redes Digitales',
@@ -26,7 +25,6 @@ const CARRERAS_INFO = {
   }
 };
 
-// Catálogo local de respaldo para municipios del Estado de México por prefijo de CP
 const PREFIJOS_MUNICIPIOS = {
   '544': 'Nicolás Romero',
   '529': 'Atizapán de Zaragoza',
@@ -43,8 +41,7 @@ const PREFIJOS_MUNICIPIOS = {
   '545': 'Isidro Fabela'
 };
 
-// Logotipo vectorial UTFV
-function LogoUTFV({ ancho = 135 }) {
+function LogoUTFV({ ancho = 110 }) {
   return (
     <svg width={ancho} viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg" aria-label="Logo UTFV">
       <circle cx="54" cy="24" r="11" fill="#C48F4B" />
@@ -97,7 +94,6 @@ function LogoUTFV({ ancho = 135 }) {
   );
 }
 
-// Membrete Oficial UTFV
 function MembreteUTFV({ tituloDocumento }) {
   const fechaHoy = new Date().toLocaleDateString('es-MX', {
     year: 'numeric',
@@ -108,7 +104,7 @@ function MembreteUTFV({ tituloDocumento }) {
   return (
     <div className="membrete-oficial">
       <div className="membrete-contenido">
-        <LogoUTFV ancho={120} />
+        <LogoUTFV ancho={105} />
         <div className="membrete-textos">
           <div className="membrete-gob">GOBIERNO DEL ESTADO DE MÉXICO</div>
           <div className="membrete-uni">UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ</div>
@@ -117,10 +113,10 @@ function MembreteUTFV({ tituloDocumento }) {
           </div>
           <div className="membrete-doc-titulo">{tituloDocumento}</div>
         </div>
-        <div style={{ textAlign: 'right', fontSize: '0.8rem', color: '#66585a' }}>
-          <strong>Fecha de emisión:</strong>
+        <div style={{ textAlign: 'right', fontSize: '0.76rem', color: '#6b7280' }}>
+          <strong>Emisión</strong>
           <div>{fechaHoy}</div>
-          <div style={{ marginTop: '4px', color: '#9E1B32', fontWeight: '700' }}>
+          <div style={{ marginTop: '3px', color: '#9E1B32', fontWeight: '600' }}>
             Nicolás Romero, Méx.
           </div>
         </div>
@@ -129,19 +125,18 @@ function MembreteUTFV({ tituloDocumento }) {
   );
 }
 
-// Dibujar tablas centradas en jsPDF puro (100% compatible con Vite)
 function dibujarTablaCentradaPDF(doc, startY, columnas, filas) {
   let y = startY;
-  const altoEncabezado = 9;
+  const altoEncabezado = 8.5;
 
   doc.setFillColor(158, 27, 50);
   doc.rect(10, y, 190, altoEncabezado, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.2);
+  doc.setFontSize(8);
 
   columnas.forEach((col) => {
-    doc.text(col.titulo, col.x + col.w / 2, y + 6, { align: 'center' });
+    doc.text(col.titulo, col.x + col.w / 2, y + 5.8, { align: 'center' });
   });
 
   y += altoEncabezado;
@@ -153,7 +148,7 @@ function dibujarTablaCentradaPDF(doc, startY, columnas, filas) {
       doc.splitTextToSize(String(fila[i] ?? '-'), col.w - 2.5)
     );
     const maxLineas = Math.max(...textosDivididos.map((t) => t.length));
-    const altoFila = Math.max(8, maxLineas * 4.1 + 3.5);
+    const altoFila = Math.max(8, maxLineas * 4 + 3.5);
 
     if (y + altoFila > 272) {
       doc.addPage();
@@ -161,17 +156,17 @@ function dibujarTablaCentradaPDF(doc, startY, columnas, filas) {
     }
 
     if (idxFila % 2 === 1) {
-      doc.setFillColor(253, 248, 248);
+      doc.setFillColor(249, 250, 251);
       doc.rect(10, y, 190, altoFila, 'F');
     }
 
-    doc.setDrawColor(215, 200, 202);
-    doc.setTextColor(44, 36, 37);
+    doc.setDrawColor(225, 228, 232);
+    doc.setTextColor(30, 30, 35);
 
     columnas.forEach((col, i) => {
       doc.rect(col.x, y, col.w, altoFila);
       const lineas = textosDivididos[i];
-      const inicioTextoY = y + (altoFila - (lineas.length - 1) * 4.1) / 2 + 1.2;
+      const inicioTextoY = y + (altoFila - (lineas.length - 1) * 4) / 2 + 1.2;
       doc.text(lineas, col.x + col.w / 2, inicioTextoY, { align: 'center' });
     });
 
@@ -179,6 +174,38 @@ function dibujarTablaCentradaPDF(doc, startY, columnas, filas) {
   });
 
   return y;
+}
+
+// Función compartida para recalcular promedio ordinario, EGO y calificación final
+function recalcularFilaCalificacion(actual, campo, valor) {
+  const siguiente = { ...actual, [campo]: valor };
+
+  const validos = [siguiente.parcial_1, siguiente.parcial_2, siguiente.parcial_3]
+    .filter((v) => v !== '' && v !== null && !isNaN(Number(v)))
+    .map(Number);
+
+  const promOrd =
+    validos.length > 0
+      ? Number((validos.reduce((acc, n) => acc + n, 0) / validos.length).toFixed(1))
+      : '';
+
+  const tieneNotaEgo =
+    siguiente.calificacion_ego !== '' &&
+    siguiente.calificacion_ego !== null &&
+    !isNaN(Number(siguiente.calificacion_ego));
+
+  if (tieneNotaEgo) {
+    siguiente.final = Number(siguiente.calificacion_ego).toFixed(1);
+    siguiente.ego = true;
+  } else if (promOrd !== '') {
+    siguiente.final = promOrd.toFixed(1);
+    siguiente.ego = promOrd < 7.0;
+  } else {
+    siguiente.final = '';
+    siguiente.ego = false;
+  }
+
+  return siguiente;
 }
 
 function App() {
@@ -197,7 +224,6 @@ function App() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstatus, setFiltroEstatus] = useState('TODOS');
 
-  // Formulario de nuevo aspirante + CP automático
   const [nuevoAspirante, setNuevoAspirante] = useState({
     nombre: '',
     apellido_p: '',
@@ -218,7 +244,6 @@ function App() {
   const [coloniasDisponibles, setColoniasDisponibles] = useState([]);
   const [buscandoCP, setBuscandoCP] = useState(false);
 
-  // Formulario de inscripción con tutores por carrera
   const [inscripcion, setInscripcion] = useState({
     aspiranteId: '',
     matricula: '',
@@ -227,19 +252,17 @@ function App() {
     tutor_grupo: CARRERAS_INFO.IRD.tutor
   });
 
-  // Captura GRUPAL de calificaciones
+  // Captura grupal
   const [grupoSeleccionado, setGrupoSeleccionado] = useState('');
   const [materiaGrupoSeleccionada, setMateriaGrupoSeleccionada] = useState('');
   const [notasGrupales, setNotasGrupales] = useState({});
   const [guardandoGrupo, setGuardandoGrupo] = useState(false);
 
-  // Consulta y captura de boleta individual
+  // Boleta individual y Kardex
   const [matriculaBusqueda, setMatriculaBusqueda] = useState('');
   const [alumnoBoleta, setAlumnoBoleta] = useState(null);
   const [notasEditadas, setNotasEditadas] = useState({});
   const [edicionBloqueada, setEdicionBloqueada] = useState(false);
-
-  // Consulta de Kardex
   const [alumnoKardex, setAlumnoKardex] = useState(null);
 
   const mostrarAlerta = (tipo, texto) => {
@@ -260,7 +283,7 @@ function App() {
         sessionStorage.setItem('utfv_admin_auth', 'true');
         setAutenticado(true);
       } else {
-        setErrorLogin('Usuario o contraseña de administrador incorrectos.');
+        setErrorLogin('Usuario o contraseña incorrectos.');
       }
     } finally {
       setValidandoLogin(false);
@@ -291,7 +314,6 @@ function App() {
     }
   }, [autenticado]);
 
-  // Automatización de Código Postal
   const manejarCambioCP = async (valorRaw) => {
     const cpLimpio = valorRaw.replace(/\D/g, '').slice(0, 5);
     setNuevoAspirante((prev) => ({ ...prev, c_p: cpLimpio }));
@@ -319,7 +341,7 @@ function App() {
         municipio: municipioInferido || prev.municipio,
         colonia: listaColonias[0] || ''
       }));
-      mostrarAlerta('exito', `CP ${cpLimpio} localizado: ${listaColonias.length} colonia(s) encontradas.`);
+      mostrarAlerta('exito', `CP ${cpLimpio}: ${listaColonias.length} colonia(s) cargadas.`);
     } catch (error) {
       setColoniasDisponibles([]);
       if (municipioInferido) {
@@ -330,7 +352,7 @@ function App() {
           estado: 'Estado de México'
         }));
       }
-      mostrarAlerta('error', 'CP no encontrado en el catálogo automático; puedes escribir la colonia manualmente.');
+      mostrarAlerta('error', 'CP no encontrado automáticamente; ingresa la colonia manual.');
     } finally {
       setBuscandoCP(false);
     }
@@ -339,7 +361,7 @@ function App() {
   const manejarRegistroAspirante = async (e) => {
     e.preventDefault();
     if (nuevoAspirante.telefono && nuevoAspirante.telefono.length !== 10) {
-      mostrarAlerta('error', 'El teléfono celular debe tener exactamente 10 dígitos.');
+      mostrarAlerta('error', 'El teléfono celular debe tener 10 dígitos.');
       return;
     }
 
@@ -365,7 +387,7 @@ function App() {
       };
 
       await axios.post(`${API_URL}/aspirantes`, payload);
-      mostrarAlerta('exito', 'Aspirante registrado correctamente en la base de datos.');
+      mostrarAlerta('exito', 'Aspirante registrado correctamente.');
       setNuevoAspirante({
         nombre: '',
         apellido_p: '',
@@ -387,14 +409,14 @@ function App() {
       cargarAlumnos();
       setPestana('padron');
     } catch (error) {
-      mostrarAlerta('error', 'Error al registrar al aspirante. Verifica los campos.');
+      mostrarAlerta('error', 'Error al registrar aspirante.');
     }
   };
 
   const manejarInscripcion = async (e) => {
     e.preventDefault();
     if (!inscripcion.aspiranteId) {
-      mostrarAlerta('error', 'Selecciona un aspirante de la lista.');
+      mostrarAlerta('error', 'Selecciona un aspirante.');
       return;
     }
     try {
@@ -420,17 +442,16 @@ function App() {
   };
 
   const manejarEliminar = async (id, nombreCompleto) => {
-    if (!window.confirm(`¿Deseas eliminar el registro de ${nombreCompleto}?`)) return;
+    if (!window.confirm(`¿Eliminar el registro de ${nombreCompleto}?`)) return;
     try {
       await axios.delete(`${API_URL}/${id}`);
-      mostrarAlerta('exito', 'Registro eliminado correctamente.');
+      mostrarAlerta('exito', 'Registro eliminado.');
       cargarAlumnos();
     } catch (error) {
       mostrarAlerta('error', 'No se pudo eliminar el registro.');
     }
   };
 
-  // ================= LÓGICA DE CAPTURA GRUPAL =================
   const alumnosActivos = alumnos.filter((a) => a.estatus === 'ALUMNO_ACTIVO');
   const aspirantesDisponibles = alumnos.filter((a) => a.estatus === 'ASPIRANTE');
 
@@ -444,6 +465,7 @@ function App() {
 
   const materiasDelGrupo = alumnosDelGrupo[0]?.cargas_academicas?.[0]?.materias || [];
 
+  // ================= CAPTURA GRUPAL =================
   const cargarTablaGrupal = (grupo, claveMat) => {
     setGrupoSeleccionado(grupo);
     const integrantes = alumnosActivos.filter((a) => a.academico?.grupo === grupo);
@@ -457,13 +479,17 @@ function App() {
         (m) => m.clave === materiaObjetivo
       );
       const fin = mat?.calificaciones?.final ?? '';
+      const calEgo = mat?.calificaciones?.calificacion_ego ?? '';
       const egoAuto =
-        Boolean(mat?.calificaciones?.ego) || (fin !== '' && Number(fin) < 7.0);
+        Boolean(mat?.calificaciones?.ego) ||
+        calEgo !== '' ||
+        (fin !== '' && Number(fin) < 7.0);
 
       mapaGrupal[al.matricula] = {
         parcial_1: mat?.calificaciones?.parcial_1 ?? '',
         parcial_2: mat?.calificaciones?.parcial_2 ?? '',
         parcial_3: mat?.calificaciones?.parcial_3 ?? '',
+        calificacion_ego: calEgo,
         final: fin,
         ego: egoAuto
       };
@@ -472,35 +498,15 @@ function App() {
   };
 
   const cambiarNotaGrupal = (matricula, campo, valor) => {
-    setNotasGrupales((prev) => {
-      const actual = { ...prev[matricula], [campo]: valor };
-
-      if (campo === 'ego') {
-        actual.ego = Boolean(valor);
-      } else if (campo !== 'final') {
-        const validos = [actual.parcial_1, actual.parcial_2, actual.parcial_3]
-          .filter((v) => v !== '' && v !== null && !isNaN(Number(v)))
-          .map(Number);
-
-        if (validos.length > 0) {
-          const prom = Number(
-            (validos.reduce((acc, n) => acc + n, 0) / validos.length).toFixed(1)
-          );
-          actual.final = prom;
-          actual.ego = prom < 7.0;
-        } else {
-          actual.final = '';
-          actual.ego = false;
-        }
-      }
-
-      return { ...prev, [matricula]: actual };
-    });
+    setNotasGrupales((prev) => ({
+      ...prev,
+      [matricula]: recalcularFilaCalificacion(prev[matricula] || {}, campo, valor)
+    }));
   };
 
   const guardarCalificacionesGrupales = async () => {
     if (!grupoSeleccionado || !materiaGrupoSeleccionada) {
-      mostrarAlerta('error', 'Selecciona primero un grupo y una materia.');
+      mostrarAlerta('error', 'Selecciona un grupo y una materia.');
       return;
     }
     setGuardandoGrupo(true);
@@ -513,13 +519,13 @@ function App() {
       mostrarAlerta('exito', res.data.mensaje);
       await cargarAlumnos();
     } catch (error) {
-      mostrarAlerta('error', 'Error al guardar las calificaciones del grupo.');
+      mostrarAlerta('error', 'Error al guardar calificaciones del grupo.');
     } finally {
       setGuardandoGrupo(false);
     }
   };
 
-  // ================= LÓGICA BOLETA INDIVIDUAL Y KARDEX =================
+  // ================= BOLETA INDIVIDUAL Y KARDEX =================
   const consultarBoleta = async (mat, irAPestana = null) => {
     const matriculaObjetivo = (mat || matriculaBusqueda).trim();
     if (!matriculaObjetivo) {
@@ -541,17 +547,21 @@ function App() {
           const p1 = m.calificaciones?.parcial_1 ?? '';
           const p2 = m.calificaciones?.parcial_2 ?? '';
           const p3 = m.calificaciones?.parcial_3 ?? '';
+          const calEgo = m.calificaciones?.calificacion_ego ?? '';
           const fin = m.calificaciones?.final ?? '';
           const egoFlag =
-            Boolean(m.calificaciones?.ego) || (fin !== '' && Number(fin) < 7.0);
+            Boolean(m.calificaciones?.ego) ||
+            calEgo !== '' ||
+            (fin !== '' && Number(fin) < 7.0);
 
-          if (p1 !== '' || p2 !== '' || p3 !== '' || fin !== '') {
+          if (p1 !== '' || p2 !== '' || p3 !== '' || fin !== '' || calEgo !== '') {
             tieneCalificacionesGuardadas = true;
           }
           mapaNotas[m.clave] = {
             parcial_1: p1,
             parcial_2: p2,
             parcial_3: p3,
+            calificacion_ego: calEgo,
             final: fin,
             ego: egoFlag
           };
@@ -564,38 +574,15 @@ function App() {
     } catch (error) {
       setAlumnoBoleta(null);
       setAlumnoKardex(null);
-      mostrarAlerta('error', 'No se encontró ningún alumno activo con esa matrícula.');
+      mostrarAlerta('error', 'Alumno no encontrado con esa matrícula.');
     }
   };
 
   const cambiarNotaInput = (claveMateria, campo, valor) => {
-    setNotasEditadas((prev) => {
-      const actual = { ...prev[claveMateria], [campo]: valor };
-
-      if (campo === 'ego') {
-        actual.ego = Boolean(valor);
-      } else if (campo !== 'final') {
-        const parcialesValidos = [actual.parcial_1, actual.parcial_2, actual.parcial_3]
-          .filter((v) => v !== '' && v !== null && !isNaN(Number(v)))
-          .map(Number);
-
-        if (parcialesValidos.length > 0) {
-          const prom = Number(
-            (parcialesValidos.reduce((acc, n) => acc + n, 0) / parcialesValidos.length).toFixed(1)
-          );
-          actual.final = prom;
-          actual.ego = prom < 7.0;
-        } else {
-          actual.final = '';
-          actual.ego = false;
-        }
-      }
-
-      return {
-        ...prev,
-        [claveMateria]: actual
-      };
-    });
+    setNotasEditadas((prev) => ({
+      ...prev,
+      [claveMateria]: recalcularFilaCalificacion(prev[claveMateria] || {}, campo, valor)
+    }));
   };
 
   const guardarTodasCalificaciones = async () => {
@@ -608,13 +595,10 @@ function App() {
       setAlumnoBoleta(res.data.alumno);
       setAlumnoKardex(res.data.alumno);
       setEdicionBloqueada(true);
-      mostrarAlerta(
-        'exito',
-        'Todas las calificaciones, estatus EGO y Kardex se guardaron correctamente.'
-      );
+      mostrarAlerta('exito', 'Calificaciones, EGO y Kardex guardados.');
       cargarAlumnos();
     } catch (error) {
-      mostrarAlerta('error', 'Error al guardar las calificaciones.');
+      mostrarAlerta('error', 'Error al guardar calificaciones.');
     }
   };
 
@@ -624,7 +608,7 @@ function App() {
       const res = await axios.post(`${API_URL}/kardex/${alumnoBoleta.matricula}`);
       setAlumnoBoleta(res.data.alumno);
       setAlumnoKardex(res.data.alumno);
-      mostrarAlerta('exito', 'Registro académico consolidado y guardado en el Kardex.');
+      mostrarAlerta('exito', 'Registro guardado en el Kardex.');
       cargarAlumnos();
     } catch (error) {
       mostrarAlerta('error', 'No se pudo actualizar el Kardex.');
@@ -642,7 +626,6 @@ function App() {
     return (suma / lista.length).toFixed(2);
   };
 
-  // Descargar PDF oficial de la Boleta con columna EGO
   const descargarBoletaPDF = () => {
     if (!alumnoBoleta) return;
     try {
@@ -650,56 +633,63 @@ function App() {
       const promedioGen = calcularPromedioGeneral();
 
       doc.setFillColor(158, 27, 50);
-      doc.rect(0, 0, 210, 34, 'F');
+      doc.rect(0, 0, 210, 32, 'F');
       doc.setFillColor(196, 143, 75);
-      doc.rect(0, 34, 210, 3, 'F');
+      doc.rect(0, 32, 210, 2.5, 'F');
 
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 10, { align: 'center' });
-      doc.setFontSize(14);
+      doc.setFontSize(8.5);
+      doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 9, { align: 'center' });
+      doc.setFontSize(13.5);
       doc.setFont('helvetica', 'bold');
-      doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 18, { align: 'center' });
-      doc.setFontSize(10);
+      doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 17, { align: 'center' });
+      doc.setFontSize(9.5);
       doc.setFont('helvetica', 'normal');
-      doc.text('Dirección de Servicios Escolares • Boleta Oficial de Calificaciones', 105, 26, {
+      doc.text('Dirección de Servicios Escolares • Boleta Oficial de Calificaciones', 105, 25, {
         align: 'center'
       });
 
-      doc.setTextColor(44, 36, 37);
-      doc.setFontSize(10);
+      doc.setTextColor(35, 35, 40);
+      doc.setFontSize(9.5);
       const nombreCompleto = `${alumnoBoleta.nombre} ${alumnoBoleta.apellido_p} ${alumnoBoleta.apellido_m}`;
       doc.setFont('helvetica', 'bold');
-      doc.text(`ALUMNO: ${nombreCompleto}`, 105, 46, { align: 'center' });
+      doc.text(`ALUMNO: ${nombreCompleto}`, 105, 44, { align: 'center' });
       doc.setFont('helvetica', 'normal');
       doc.text(
         `MATRÍCULA: ${alumnoBoleta.matricula}   |   GRUPO: ${alumnoBoleta.academico?.grupo || ''} (${alumnoBoleta.academico?.cuatrimestre || ''} Cuatrimestre)`,
         105,
-        53,
+        51,
         { align: 'center' }
       );
-      doc.text(`CARRERA: ${alumnoBoleta.academico?.carrera || ''}`, 105, 60, { align: 'center' });
+      doc.text(`CARRERA: ${alumnoBoleta.academico?.carrera || ''}`, 105, 58, { align: 'center' });
       doc.text(
         `PERIODO: ${alumnoBoleta.academico?.periodo || ''}   |   TUTOR: ${alumnoBoleta.academico?.tutor_grupo || ''}`,
         105,
-        67,
+        65,
         { align: 'center' }
       );
 
       const columnas = [
-        { titulo: 'Clave', x: 10, w: 20 },
-        { titulo: 'Asignatura', x: 30, w: 56 },
-        { titulo: 'Docente', x: 86, w: 42 },
-        { titulo: 'P1', x: 128, w: 12 },
-        { titulo: 'P2', x: 140, w: 12 },
-        { titulo: 'P3', x: 152, w: 12 },
-        { titulo: 'Final', x: 164, w: 15 },
-        { titulo: 'EGO', x: 179, w: 21 }
+        { titulo: 'Clave', x: 10, w: 19 },
+        { titulo: 'Asignatura', x: 29, w: 54 },
+        { titulo: 'Docente', x: 83, w: 41 },
+        { titulo: 'P1', x: 124, w: 12 },
+        { titulo: 'P2', x: 136, w: 12 },
+        { titulo: 'P3', x: 148, w: 12 },
+        { titulo: 'EGO', x: 160, w: 20 },
+        { titulo: 'Final', x: 180, w: 20 }
       ];
 
       const filas = (alumnoBoleta.cargas_academicas?.[0]?.materias || []).map((mat) => {
         const n = notasEditadas[mat.clave] || {};
+        const textoEgo =
+          n.calificacion_ego !== '' && n.calificacion_ego !== null
+            ? `SÍ (${n.calificacion_ego})`
+            : n.ego
+            ? 'SÍ (Pend.)'
+            : 'NO';
+
         return [
           mat.clave,
           mat.nombre,
@@ -707,86 +697,85 @@ function App() {
           n.parcial_1 !== '' && n.parcial_1 !== null ? n.parcial_1 : '-',
           n.parcial_2 !== '' && n.parcial_2 !== null ? n.parcial_2 : '-',
           n.parcial_3 !== '' && n.parcial_3 !== null ? n.parcial_3 : '-',
-          n.final !== '' && n.final !== null ? n.final : '-',
-          n.ego ? 'SÍ (EGO)' : 'NO'
+          textoEgo,
+          n.final !== '' && n.final !== null ? n.final : '-'
         ];
       });
 
-      const finalY = dibujarTablaCentradaPDF(doc, 74, columnas, filas) + 12;
+      const finalY = dibujarTablaCentradaPDF(doc, 72, columnas, filas) + 12;
 
-      doc.setFillColor(107, 42, 50);
-      doc.roundedRect(65, finalY, 80, 15, 3, 3, 'F');
+      doc.setFillColor(158, 27, 50);
+      doc.roundedRect(65, finalY, 80, 14, 2.5, 2.5, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(11);
+      doc.setFontSize(10.5);
       doc.setFont('helvetica', 'bold');
-      doc.text(`PROMEDIO GENERAL: ${promedioGen}`, 105, finalY + 10, { align: 'center' });
+      doc.text(`PROMEDIO GENERAL: ${promedioGen}`, 105, finalY + 9.2, { align: 'center' });
 
-      doc.setTextColor(80, 80, 80);
-      doc.setFontSize(9);
+      doc.setTextColor(90, 90, 95);
+      doc.setFontSize(8.5);
       doc.setFont('helvetica', 'normal');
-      doc.line(30, finalY + 36, 90, finalY + 36);
-      doc.text('Control Escolar UTFV', 60, finalY + 41, { align: 'center' });
+      doc.line(30, finalY + 34, 90, finalY + 34);
+      doc.text('Control Escolar UTFV', 60, finalY + 39, { align: 'center' });
 
-      doc.line(120, finalY + 36, 180, finalY + 36);
-      doc.text(alumnoBoleta.academico?.tutor_grupo || 'Tutor de Grupo', 150, finalY + 41, {
+      doc.line(120, finalY + 34, 180, finalY + 34);
+      doc.text(alumnoBoleta.academico?.tutor_grupo || 'Tutor de Grupo', 150, finalY + 39, {
         align: 'center'
       });
 
       doc.save(`Boleta_UTFV_${alumnoBoleta.matricula}.pdf`);
-      mostrarAlerta('exito', `Boleta_UTFV_${alumnoBoleta.matricula}.pdf descargada correctamente.`);
+      mostrarAlerta('exito', `Boleta_UTFV_${alumnoBoleta.matricula}.pdf descargada.`);
     } catch (error) {
-      mostrarAlerta('error', `No se pudo generar el PDF: ${error.message}`);
+      mostrarAlerta('error', `Error al generar PDF: ${error.message}`);
     }
   };
 
-  // Descargar PDF oficial del Kardex con columna EGO
   const descargarKardexPDF = () => {
     if (!alumnoKardex) return;
     try {
       const doc = new jsPDF();
 
-      doc.setFillColor(107, 42, 50);
-      doc.rect(0, 0, 210, 34, 'F');
+      doc.setFillColor(90, 33, 41);
+      doc.rect(0, 0, 210, 32, 'F');
       doc.setFillColor(196, 143, 75);
-      doc.rect(0, 34, 210, 3, 'F');
+      doc.rect(0, 32, 210, 2.5, 'F');
 
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 10, { align: 'center' });
-      doc.setFontSize(14);
+      doc.setFontSize(8.5);
+      doc.text('GOBIERNO DEL ESTADO DE MÉXICO', 105, 9, { align: 'center' });
+      doc.setFontSize(13.5);
       doc.setFont('helvetica', 'bold');
-      doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 18, { align: 'center' });
-      doc.setFontSize(10);
+      doc.text('UNIVERSIDAD TECNOLÓGICA FIDEL VELÁZQUEZ', 105, 17, { align: 'center' });
+      doc.setFontSize(9.5);
       doc.setFont('helvetica', 'normal');
-      doc.text('Historial Académico Oficial (Kardex)', 105, 26, { align: 'center' });
+      doc.text('Historial Académico Oficial (Kardex)', 105, 25, { align: 'center' });
 
       const nombreCompleto = `${alumnoKardex.nombre} ${alumnoKardex.apellido_p} ${alumnoKardex.apellido_m}`;
-      doc.setTextColor(44, 36, 37);
+      doc.setTextColor(35, 35, 40);
       doc.setFont('helvetica', 'bold');
-      doc.text(`ESTUDIANTE: ${nombreCompleto}   |   MATRÍCULA: ${alumnoKardex.matricula}`, 105, 46, {
+      doc.text(`ESTUDIANTE: ${nombreCompleto}   |   MATRÍCULA: ${alumnoKardex.matricula}`, 105, 44, {
         align: 'center'
       });
       doc.setFont('helvetica', 'normal');
-      doc.text(`CARRERA: ${alumnoKardex.academico?.carrera || ''}`, 105, 53, { align: 'center' });
+      doc.text(`CARRERA: ${alumnoKardex.academico?.carrera || ''}`, 105, 51, { align: 'center' });
 
-      let cursorY = 62;
+      let cursorY = 60;
       const historial = alumnoKardex.kardex || [];
 
       const columnasKardex = [
-        { titulo: 'Clave', x: 10, w: 22 },
-        { titulo: 'Asignatura', x: 32, w: 66 },
-        { titulo: 'P1', x: 98, w: 13 },
-        { titulo: 'P2', x: 111, w: 13 },
-        { titulo: 'P3', x: 124, w: 13 },
-        { titulo: 'Final', x: 137, w: 15 },
-        { titulo: 'EGO', x: 152, w: 18 },
-        { titulo: 'Estatus', x: 170, w: 30 }
+        { titulo: 'Clave', x: 10, w: 20 },
+        { titulo: 'Asignatura', x: 30, w: 62 },
+        { titulo: 'P1', x: 92, w: 12 },
+        { titulo: 'P2', x: 104, w: 12 },
+        { titulo: 'P3', x: 116, w: 12 },
+        { titulo: 'EGO', x: 128, w: 18 },
+        { titulo: 'Final', x: 146, w: 16 },
+        { titulo: 'Estatus', x: 162, w: 38 }
       ];
 
       historial.forEach((bloque) => {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9.5);
+        doc.setFontSize(9);
         doc.setTextColor(158, 27, 50);
         doc.text(
           `Cuatrimestre ${bloque.cuatrimestre} — Periodo: ${bloque.periodo} | Promedio: ${bloque.promedio_cuatrimestre}`,
@@ -801,8 +790,12 @@ function App() {
           m.parcial_1 ?? '-',
           m.parcial_2 ?? '-',
           m.parcial_3 ?? '-',
+          m.calificacion_ego !== null && m.calificacion_ego !== undefined
+            ? m.calificacion_ego
+            : m.ego
+            ? 'Pend.'
+            : '-',
           m.final ?? '-',
-          m.ego ? 'SÍ (EGO)' : 'NO',
           m.estatus_materia
         ]);
 
@@ -810,22 +803,20 @@ function App() {
       });
 
       doc.save(`Kardex_UTFV_${alumnoKardex.matricula}.pdf`);
-      mostrarAlerta('exito', `Kardex_UTFV_${alumnoKardex.matricula}.pdf descargado correctamente.`);
+      mostrarAlerta('exito', `Kardex_UTFV_${alumnoKardex.matricula}.pdf descargado.`);
     } catch (error) {
-      mostrarAlerta('error', `No se pudo generar el PDF del Kardex: ${error.message}`);
+      mostrarAlerta('error', `Error al generar PDF del Kardex: ${error.message}`);
     }
   };
 
-  // ================= PANTALLA DE LOGIN ADMINISTRADOR =================
+  // ================= PANTALLA DE LOGIN =================
   if (!autenticado) {
     return (
       <div className="login-pantalla">
         <div className="login-tarjeta">
-          <LogoUTFV ancho={170} />
-          <h1 className="login-titulo">Acceso Administrativo</h1>
-          <p className="login-subtitulo">
-            Sistema Integral de Control Escolar y Gestión Académica
-          </p>
+          <LogoUTFV ancho={140} />
+          <h1 className="login-titulo">Control Escolar UTFV</h1>
+          <p className="login-subtitulo">Inicia sesión con tu cuenta de administrador</p>
 
           {errorLogin && (
             <div className="alerta error" style={{ textAlign: 'left' }}>
@@ -835,11 +826,11 @@ function App() {
 
           <form onSubmit={manejarLogin} className="login-form">
             <div className="campo-grupo">
-              <label>Usuario Administrador</label>
+              <label>Usuario</label>
               <input
                 type="text"
                 className="input-control"
-                placeholder="Ingresa tu usuario"
+                placeholder="admin"
                 required
                 value={loginData.usuario}
                 onChange={(e) => setLoginData({ ...loginData, usuario: e.target.value })}
@@ -861,16 +852,14 @@ function App() {
             <button
               type="submit"
               className="btn btn-primario"
-              style={{ width: '100%', padding: '13px', fontSize: '1rem' }}
+              style={{ width: '100%', padding: '11px', marginTop: '4px' }}
               disabled={validandoLogin}
             >
-              {validandoLogin ? 'Verificando acceso...' : 'Iniciar Sesión'}
+              {validandoLogin ? 'Verificando...' : 'Entrar al sistema'}
             </button>
           </form>
 
-          <div className="login-ayuda">
-            Acceso exclusivo para personal autorizado de la UTFV
-          </div>
+          <p className="login-ayuda">Universidad Tecnológica Fidel Velázquez</p>
         </div>
       </div>
     );
@@ -887,1102 +876,1092 @@ function App() {
   });
 
   return (
-    <div className="contenedor-principal">
-      <header className="encabezado">
-        <div className="encabezado-izquierda">
-          <div className="logo-badge-blanco">
-            <LogoUTFV ancho={94} />
+    <>
+      <header className="barra-superior">
+        <div className="barra-superior-inner">
+          <div className="marca-grupo">
+            <LogoUTFV ancho={76} />
+            <div className="marca-divisor" />
+            <div>
+              <div className="marca-titulo">Gestión Académica UTFV</div>
+              <div className="marca-subtitulo">Control Escolar • Boletas • Kardex</div>
+            </div>
           </div>
-          <div>
-            <h1>Sistema de Gestión Académica — UTFV</h1>
-            <p>Universidad Tecnológica Fidel Velázquez • Control Escolar, Boletas y Kardex</p>
+
+          <div className="barra-derecha">
+            <div className="resumen-linea">
+              <span>
+                Total: <strong>{alumnos.length}</strong>
+              </span>
+              <span>·</span>
+              <span>
+                Aspirantes: <strong>{aspirantesDisponibles.length}</strong>
+              </span>
+              <span>·</span>
+              <span>
+                Activos: <strong>{alumnosActivos.length}</strong>
+              </span>
+              <span>·</span>
+              <span>
+                Grupos: <strong>{gruposDisponibles.length}</strong>
+              </span>
+            </div>
+
+            <button className="btn btn-secundario" onClick={cerrarSesion}>
+              Cerrar sesión
+            </button>
           </div>
         </div>
-
-        <button className="btn-salir" onClick={cerrarSesion}>
-          Cerrar Sesión
-        </button>
       </header>
 
-      {/* TARJETAS KPI VISUALES */}
-      <section className="kpi-grid">
-        <div className="kpi-card">
-          <div className="kpi-info">
-            <span>Matrícula Total</span>
-            <strong>{alumnos.length}</strong>
-          </div>
-          <div className="kpi-icono">∑</div>
-        </div>
-        <div className="kpi-card dorado">
-          <div className="kpi-info">
-            <span>Aspirantes</span>
-            <strong>{aspirantesDisponibles.length}</strong>
-          </div>
-          <div className="kpi-icono" style={{ color: '#a85327', background: '#fbf3e6' }}>
-            ★
-          </div>
-        </div>
-        <div className="kpi-card vino">
-          <div className="kpi-info">
-            <span>Alumnos Activos</span>
-            <strong>{alumnosActivos.length}</strong>
-          </div>
-          <div className="kpi-icono">✓</div>
-        </div>
-        <div className="kpi-card terracota">
-          <div className="kpi-info">
-            <span>Grupos Activos</span>
-            <strong>{gruposDisponibles.length}</strong>
-          </div>
-          <div className="kpi-icono" style={{ color: '#5a2129', background: '#f5ecee' }}>
-            ☰
-          </div>
-        </div>
-      </section>
-
-      {/* BARRA DE NAVEGACIÓN */}
-      <nav className="navegacion">
-        <button
-          className={`btn-tab ${pestana === 'padron' ? 'activo' : ''}`}
-          onClick={() => setPestana('padron')}
-        >
-          1. Padrón General
-        </button>
-        <button
-          className={`btn-tab ${pestana === 'aspirante' ? 'activo' : ''}`}
-          onClick={() => setPestana('aspirante')}
-        >
-          2. Registrar Aspirante
-        </button>
-        <button
-          className={`btn-tab ${pestana === 'inscripcion' ? 'activo' : ''}`}
-          onClick={() => setPestana('inscripcion')}
-        >
-          3. Inscripción y Tutores
-        </button>
-        <button
-          className={`btn-tab ${pestana === 'grupal' ? 'activo' : ''}`}
-          onClick={() => {
-            setPestana('grupal');
-            if (!grupoSeleccionado && gruposDisponibles.length > 0) {
-              cargarTablaGrupal(gruposDisponibles[0], '');
-            }
-          }}
-        >
-          4. Captura Grupal
-        </button>
-        <button
-          className={`btn-tab ${pestana === 'boleta' ? 'activo' : ''}`}
-          onClick={() => setPestana('boleta')}
-        >
-          5. Boleta Individual
-        </button>
-        <button
-          className={`btn-tab ${pestana === 'kardex' ? 'activo' : ''}`}
-          onClick={() => setPestana('kardex')}
-        >
-          6. Kardex Académico
-        </button>
-      </nav>
-
-      {mensaje && (
-        <div className={`alerta ${mensaje.tipo}`}>
-          <span>{mensaje.texto}</span>
+      <main className="contenedor-principal">
+        <nav className="navegacion">
           <button
-            onClick={() => setMensaje(null)}
-            style={{ background: 'none', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+            className={`btn-tab ${pestana === 'padron' ? 'activo' : ''}`}
+            onClick={() => setPestana('padron')}
           >
-            ✕
+            Padrón General
           </button>
-        </div>
-      )}
+          <button
+            className={`btn-tab ${pestana === 'aspirante' ? 'activo' : ''}`}
+            onClick={() => setPestana('aspirante')}
+          >
+            Nuevo Aspirante
+          </button>
+          <button
+            className={`btn-tab ${pestana === 'inscripcion' ? 'activo' : ''}`}
+            onClick={() => setPestana('inscripcion')}
+          >
+            Inscripción y Tutores
+          </button>
+          <button
+            className={`btn-tab ${pestana === 'grupal' ? 'activo' : ''}`}
+            onClick={() => {
+              setPestana('grupal');
+              if (!grupoSeleccionado && gruposDisponibles.length > 0) {
+                cargarTablaGrupal(gruposDisponibles[0], '');
+              }
+            }}
+          >
+            Captura Grupal
+          </button>
+          <button
+            className={`btn-tab ${pestana === 'boleta' ? 'activo' : ''}`}
+            onClick={() => setPestana('boleta')}
+          >
+            Boleta Individual
+          </button>
+          <button
+            className={`btn-tab ${pestana === 'kardex' ? 'activo' : ''}`}
+            onClick={() => setPestana('kardex')}
+          >
+            Kardex
+          </button>
+        </nav>
 
-      {/* PESTAÑA 1: PADRÓN GENERAL */}
-      {pestana === 'padron' && (
-        <section className="tarjeta">
-          <h2>Padrón de Aspirantes y Alumnos Activos</h2>
-          <div className="filtros-barra">
-            <input
-              type="text"
-              className="input-control"
-              style={{ flex: 1, minWidth: '240px' }}
-              placeholder="Buscar por nombre, apellidos o matrícula..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-            />
-            <select
-              className="select-control"
-              value={filtroEstatus}
-              onChange={(e) => setFiltroEstatus(e.target.value)}
+        {mensaje && (
+          <div className={`alerta ${mensaje.tipo}`}>
+            <span>{mensaje.texto}</span>
+            <button
+              onClick={() => setMensaje(null)}
+              style={{ background: 'none', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              <option value="TODOS">Todos los estatus</option>
-              <option value="ASPIRANTE">Solo Aspirantes</option>
-              <option value="ALUMNO_ACTIVO">Solo Alumnos Activos</option>
-            </select>
+              ✕
+            </button>
           </div>
+        )}
 
-          {cargando ? (
-            <p>Cargando registros desde MongoDB Atlas...</p>
-          ) : (
-            <div className="tabla-contenedor">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Estatus</th>
-                    <th>Matrícula</th>
-                    <th>Nombre Completo</th>
-                    <th>Carrera / Grupo</th>
-                    <th>Tutor de Grupo</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {alumnosFiltrados.map((alumno) => {
-                    const nombreCompleto = `${alumno.nombre} ${alumno.apellido_p} ${alumno.apellido_m}`;
-                    return (
-                      <tr key={alumno._id}>
-                        <td>
-                          <span
-                            className={`badge ${
-                              alumno.estatus === 'ALUMNO_ACTIVO'
-                                ? 'badge-activo'
-                                : 'badge-aspirante'
-                            }`}
-                          >
-                            {alumno.estatus}
-                          </span>
-                        </td>
-                        <td>
-                          <strong>{alumno.matricula || 'Sin asignar'}</strong>
-                        </td>
-                        <td>{nombreCompleto}</td>
-                        <td>
-                          {alumno.academico?.carrera
-                            ? `${alumno.academico.grupo} — ${alumno.academico.carrera}`
-                            : 'Pendiente de inscripción'}
-                        </td>
-                        <td>{alumno.academico?.tutor_grupo || 'Sin asignar'}</td>
-                        <td>
-                          <div className="acciones-celda">
-                            {alumno.estatus === 'ASPIRANTE' ? (
-                              <button
-                                className="btn btn-primario"
-                                onClick={() => {
-                                  setInscripcion((prev) => ({
-                                    ...prev,
-                                    aspiranteId: alumno._id
-                                  }));
-                                  setPestana('inscripcion');
-                                }}
-                              >
-                                Inscribir
-                              </button>
-                            ) : (
-                              <>
-                                <button
-                                  className="btn btn-dorado"
-                                  onClick={() => consultarBoleta(alumno.matricula, 'boleta')}
-                                >
-                                  Boleta
-                                </button>
-                                <button
-                                  className="btn btn-vino"
-                                  onClick={() => consultarBoleta(alumno.matricula, 'kardex')}
-                                >
-                                  Kardex
-                                </button>
-                              </>
-                            )}
-                            <button
-                              className="btn btn-peligro"
-                              onClick={() => manejarEliminar(alumno._id, nombreCompleto)}
+        {/* PESTAÑA 1: PADRÓN GENERAL */}
+        {pestana === 'padron' && (
+          <section className="tarjeta">
+            <div className="tarjeta-header">
+              <h2>Padrón de Aspirantes y Alumnos Activos</h2>
+            </div>
+
+            <div className="filtros-barra">
+              <input
+                type="text"
+                className="input-control"
+                style={{ flex: 1, minWidth: '240px' }}
+                placeholder="Buscar por nombre o matrícula..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+              <select
+                className="select-control"
+                value={filtroEstatus}
+                onChange={(e) => setFiltroEstatus(e.target.value)}
+              >
+                <option value="TODOS">Todos los estatus</option>
+                <option value="ASPIRANTE">Aspirantes</option>
+                <option value="ALUMNO_ACTIVO">Alumnos Activos</option>
+              </select>
+            </div>
+
+            {cargando ? (
+              <p style={{ color: '#6b7280', fontSize: '0.9rem' }}>Cargando registros...</p>
+            ) : (
+              <div className="tabla-contenedor">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Estatus</th>
+                      <th>Matrícula</th>
+                      <th>Nombre Completo</th>
+                      <th>Carrera / Grupo</th>
+                      <th>Tutor(a)</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {alumnosFiltrados.map((alumno) => {
+                      const nombreCompleto = `${alumno.nombre} ${alumno.apellido_p} ${alumno.apellido_m}`;
+                      return (
+                        <tr key={alumno._id}>
+                          <td>
+                            <span
+                              className={`badge ${
+                                alumno.estatus === 'ALUMNO_ACTIVO'
+                                  ? 'badge-activo'
+                                  : 'badge-aspirante'
+                              }`}
                             >
-                              Eliminar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
+                              {alumno.estatus === 'ALUMNO_ACTIVO' ? 'ACTIVO' : 'ASPIRANTE'}
+                            </span>
+                          </td>
+                          <td>
+                            <strong>{alumno.matricula || '—'}</strong>
+                          </td>
+                          <td>{nombreCompleto}</td>
+                          <td>
+                            {alumno.academico?.carrera
+                              ? `${alumno.academico.grupo} — ${alumno.academico.carrera}`
+                              : 'Sin asignar'}
+                          </td>
+                          <td>{alumno.academico?.tutor_grupo || '—'}</td>
+                          <td>
+                            <div className="acciones-celda">
+                              {alumno.estatus === 'ASPIRANTE' ? (
+                                <button
+                                  className="btn btn-primario"
+                                  onClick={() => {
+                                    setInscripcion((prev) => ({
+                                      ...prev,
+                                      aspiranteId: alumno._id
+                                    }));
+                                    setPestana('inscripcion');
+                                  }}
+                                >
+                                  Inscribir
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    className="btn btn-dorado"
+                                    onClick={() => consultarBoleta(alumno.matricula, 'boleta')}
+                                  >
+                                    Boleta
+                                  </button>
+                                  <button
+                                    className="btn btn-secundario"
+                                    onClick={() => consultarBoleta(alumno.matricula, 'kardex')}
+                                  >
+                                    Kardex
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                className="btn btn-peligro"
+                                onClick={() => manejarEliminar(alumno._id, nombreCompleto)}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
-      {/* PESTAÑA 2: REGISTRO DE ASPIRANTES */}
-      {pestana === 'aspirante' && (
-        <section className="tarjeta">
-          <h2>Registro de Nuevo Aspirante</h2>
-          <form onSubmit={manejarRegistroAspirante}>
-            <p className="subtitulo-seccion">Datos Personales</p>
-            <div className="grid-formulario">
-              <div className="campo-grupo">
-                <label>Nombre(s) *</label>
-                <input
-                  className="input-control"
-                  required
-                  value={nuevoAspirante.nombre}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, nombre: e.target.value })
-                  }
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Apellido Paterno *</label>
-                <input
-                  className="input-control"
-                  required
-                  value={nuevoAspirante.apellido_p}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, apellido_p: e.target.value })
-                  }
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Apellido Materno *</label>
-                <input
-                  className="input-control"
-                  required
-                  value={nuevoAspirante.apellido_m}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, apellido_m: e.target.value })
-                  }
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Edad</label>
-                <input
-                  type="number"
-                  className="input-control"
-                  value={nuevoAspirante.edad}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, edad: e.target.value })
-                  }
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Peso (kg)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  className="input-control"
-                  value={nuevoAspirante.peso}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, peso: e.target.value })
-                  }
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Estatura (m)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input-control"
-                  value={nuevoAspirante.estatura}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, estatura: e.target.value })
-                  }
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Género</label>
-                <select
-                  className="select-control"
-                  value={nuevoAspirante.genero}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, genero: e.target.value })
-                  }
-                >
-                  <option value="Masculino">Masculino</option>
-                  <option value="Femenino">Femenino</option>
-                </select>
-              </div>
-              <div className="campo-grupo">
-                <label>
-                  <span>Teléfono Celular (10 dígitos)</span>
-                  <span className="ayuda-campo">{nuevoAspirante.telefono.length}/10</span>
-                </label>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={10}
-                  pattern="[0-9]{10}"
-                  placeholder="Ej. 5512345678"
-                  className="input-control"
-                  value={nuevoAspirante.telefono}
-                  onChange={(e) => {
-                    const soloNumeros = e.target.value.replace(/\D/g, '').slice(0, 10);
-                    setNuevoAspirante({ ...nuevoAspirante, telefono: soloNumeros });
-                  }}
-                />
-              </div>
-              <div className="campo-grupo">
-                <label>Correo Electrónico</label>
-                <input
-                  type="email"
-                  className="input-control"
-                  value={nuevoAspirante.correo}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, correo: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            <p className="subtitulo-seccion">Domicilio (Código Postal Automatizado)</p>
-            <div className="grid-formulario">
-              <div className="campo-grupo">
-                <label>
-                  <span>Código Postal (5 dígitos)</span>
-                  {buscandoCP && <span className="ayuda-campo">Buscando...</span>}
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={5}
-                  placeholder="Ej. 54400"
-                  className="input-control"
-                  value={nuevoAspirante.c_p}
-                  onChange={(e) => manejarCambioCP(e.target.value)}
-                />
-              </div>
-
-              <div className="campo-grupo">
-                <label>Colonia</label>
-                {coloniasDisponibles.length > 0 ? (
+        {/* PESTAÑA 2: REGISTRO DE ASPIRANTES */}
+        {pestana === 'aspirante' && (
+          <section className="tarjeta">
+            <h2>Registro de Nuevo Aspirante</h2>
+            <form onSubmit={manejarRegistroAspirante}>
+              <p className="subtitulo-seccion">Datos Personales</p>
+              <div className="grid-formulario">
+                <div className="campo-grupo">
+                  <label>Nombre(s) *</label>
+                  <input
+                    className="input-control"
+                    required
+                    value={nuevoAspirante.nombre}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, nombre: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="campo-grupo">
+                  <label>Apellido Paterno *</label>
+                  <input
+                    className="input-control"
+                    required
+                    value={nuevoAspirante.apellido_p}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, apellido_p: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="campo-grupo">
+                  <label>Apellido Materno *</label>
+                  <input
+                    className="input-control"
+                    required
+                    value={nuevoAspirante.apellido_m}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, apellido_m: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="campo-grupo">
+                  <label>Edad</label>
+                  <input
+                    type="number"
+                    className="input-control"
+                    value={nuevoAspirante.edad}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, edad: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="campo-grupo">
+                  <label>Peso (kg)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    className="input-control"
+                    value={nuevoAspirante.peso}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, peso: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="campo-grupo">
+                  <label>Estatura (m)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input-control"
+                    value={nuevoAspirante.estatura}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, estatura: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="campo-grupo">
+                  <label>Género</label>
                   <select
                     className="select-control"
-                    value={nuevoAspirante.colonia}
+                    value={nuevoAspirante.genero}
                     onChange={(e) =>
-                      setNuevoAspirante({ ...nuevoAspirante, colonia: e.target.value })
+                      setNuevoAspirante({ ...nuevoAspirante, genero: e.target.value })
                     }
                   >
-                    {coloniasDisponibles.map((col, idx) => (
-                      <option key={idx} value={col}>
-                        {col}
+                    <option value="Masculino">Masculino</option>
+                    <option value="Femenino">Femenino</option>
+                  </select>
+                </div>
+                <div className="campo-grupo">
+                  <label>
+                    <span>Teléfono Celular</span>
+                    <span className="ayuda-campo">{nuevoAspirante.telefono.length}/10</span>
+                  </label>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    pattern="[0-9]{10}"
+                    placeholder="5512345678"
+                    className="input-control"
+                    value={nuevoAspirante.telefono}
+                    onChange={(e) => {
+                      const soloNumeros = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setNuevoAspirante({ ...nuevoAspirante, telefono: soloNumeros });
+                    }}
+                  />
+                </div>
+                <div className="campo-grupo">
+                  <label>Correo Electrónico</label>
+                  <input
+                    type="email"
+                    className="input-control"
+                    value={nuevoAspirante.correo}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, correo: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <p className="subtitulo-seccion">Domicilio</p>
+              <div className="grid-formulario">
+                <div className="campo-grupo">
+                  <label>
+                    <span>Código Postal</span>
+                    {buscandoCP && <span className="ayuda-campo">Buscando...</span>}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="54400"
+                    className="input-control"
+                    value={nuevoAspirante.c_p}
+                    onChange={(e) => manejarCambioCP(e.target.value)}
+                  />
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Colonia</label>
+                  {coloniasDisponibles.length > 0 ? (
+                    <select
+                      className="select-control"
+                      value={nuevoAspirante.colonia}
+                      onChange={(e) =>
+                        setNuevoAspirante({ ...nuevoAspirante, colonia: e.target.value })
+                      }
+                    >
+                      {coloniasDisponibles.map((col, idx) => (
+                        <option key={idx} value={col}>
+                          {col}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="input-control"
+                      placeholder="Se llena al escribir CP"
+                      value={nuevoAspirante.colonia}
+                      onChange={(e) =>
+                        setNuevoAspirante({ ...nuevoAspirante, colonia: e.target.value })
+                      }
+                    />
+                  )}
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Municipio</label>
+                  <input
+                    className="input-control"
+                    value={nuevoAspirante.municipio}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, municipio: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Estado</label>
+                  <input
+                    className="input-control"
+                    value={nuevoAspirante.estado}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, estado: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Calle</label>
+                  <input
+                    className="input-control"
+                    value={nuevoAspirante.calle}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, calle: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Número Exterior</label>
+                  <input
+                    type="number"
+                    className="input-control"
+                    value={nuevoAspirante.no}
+                    onChange={(e) =>
+                      setNuevoAspirante({ ...nuevoAspirante, no: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="btn btn-primario">
+                Guardar Aspirante
+              </button>
+            </form>
+          </section>
+        )}
+
+        {/* PESTAÑA 3: INSCRIPCIÓN Y TUTORES */}
+        {pestana === 'inscripcion' && (
+          <section className="tarjeta">
+            <h2>Inscripción y Asignación de Grupo</h2>
+
+            <div className="ficha-tutor-preview">
+              <div>
+                <strong>Programa:</strong> {CARRERAS_INFO[inscripcion.claveCarrera].nombre}
+              </div>
+              <div>
+                <strong>Tutor(a) asignado(a):</strong> {inscripcion.tutor_grupo}
+              </div>
+            </div>
+
+            <form onSubmit={manejarInscripcion}>
+              <div className="grid-formulario">
+                <div className="campo-grupo">
+                  <label>Aspirante *</label>
+                  <select
+                    className="select-control"
+                    required
+                    value={inscripcion.aspiranteId}
+                    onChange={(e) =>
+                      setInscripcion({ ...inscripcion, aspiranteId: e.target.value })
+                    }
+                  >
+                    <option value="">Seleccionar aspirante...</option>
+                    {aspirantesDisponibles.map((asp) => (
+                      <option key={asp._id} value={asp._id}>
+                        {asp.nombre} {asp.apellido_p} {asp.apellido_m}
                       </option>
                     ))}
                   </select>
-                ) : (
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Matrícula *</label>
                   <input
                     className="input-control"
-                    placeholder="Escribe el CP arriba o ingresa colonia"
-                    value={nuevoAspirante.colonia}
+                    placeholder="24307055"
+                    required
+                    value={inscripcion.matricula}
                     onChange={(e) =>
-                      setNuevoAspirante({ ...nuevoAspirante, colonia: e.target.value })
+                      setInscripcion({ ...inscripcion, matricula: e.target.value })
                     }
                   />
-                )}
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Carrera *</label>
+                  <select
+                    className="select-control"
+                    value={inscripcion.claveCarrera}
+                    onChange={(e) => {
+                      const clave = e.target.value;
+                      const info = CARRERAS_INFO[clave];
+                      setInscripcion({
+                        ...inscripcion,
+                        claveCarrera: clave,
+                        grupo: info.grupoDefault,
+                        tutor_grupo: info.tutor
+                      });
+                    }}
+                  >
+                    <option value="IRD">IRD — Infraestructura de Redes Digitales (4°)</option>
+                    <option value="LITIID">LITIID — Tecnologías de la Información (7°)</option>
+                    <option value="IRIC">IRIC — Redes Inteligentes y Ciberseguridad (10°)</option>
+                  </select>
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Grupo *</label>
+                  <input
+                    className="input-control"
+                    required
+                    value={inscripcion.grupo}
+                    onChange={(e) => setInscripcion({ ...inscripcion, grupo: e.target.value })}
+                  />
+                </div>
+
+                <div className="campo-grupo">
+                  <label>Tutor(a) de Grupo *</label>
+                  <select
+                    className="select-control"
+                    value={inscripcion.tutor_grupo}
+                    onChange={(e) =>
+                      setInscripcion({ ...inscripcion, tutor_grupo: e.target.value })
+                    }
+                  >
+                    <option value="M. en D. Arturo Hernández Jiménez">
+                      M. en D. Arturo Hernández Jiménez (IRD-401)
+                    </option>
+                    <option value="Mtra. Claudia Elena Ríos Mendoza">
+                      Mtra. Claudia Elena Ríos Mendoza (LITIID-701)
+                    </option>
+                    <option value="Ing. Roberto Carlos Domínguez Navarro">
+                      Ing. Roberto Carlos Domínguez Navarro (IRIC-1001)
+                    </option>
+                  </select>
+                </div>
               </div>
 
-              <div className="campo-grupo">
-                <label>Municipio</label>
-                <input
-                  className="input-control"
-                  value={nuevoAspirante.municipio}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, municipio: e.target.value })
-                  }
-                />
-              </div>
+              <button type="submit" className="btn btn-primario">
+                Inscribir Alumno
+              </button>
+            </form>
+          </section>
+        )}
 
-              <div className="campo-grupo">
-                <label>Estado</label>
-                <input
-                  className="input-control"
-                  value={nuevoAspirante.estado}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, estado: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="campo-grupo">
-                <label>Calle</label>
-                <input
-                  className="input-control"
-                  value={nuevoAspirante.calle}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, calle: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="campo-grupo">
-                <label>Número Exterior</label>
-                <input
-                  type="number"
-                  className="input-control"
-                  value={nuevoAspirante.no}
-                  onChange={(e) =>
-                    setNuevoAspirante({ ...nuevoAspirante, no: e.target.value })
-                  }
-                />
-              </div>
+        {/* PESTAÑA 4: CAPTURA GRUPAL CON ESPACIO PARA CALIFICACIÓN EGO */}
+        {pestana === 'grupal' && (
+          <section className="tarjeta">
+            <div className="tarjeta-header">
+              <h2>Captura Grupal de Calificaciones</h2>
             </div>
 
-            <button type="submit" className="btn btn-primario">
-              Guardar Aspirante
-            </button>
-          </form>
-        </section>
-      )}
-
-      {/* PESTAÑA 3: INSCRIPCIÓN Y TUTORES POR GRUPO */}
-      {pestana === 'inscripcion' && (
-        <section className="tarjeta">
-          <h2>Inscripción Oficial y Asignación de Grupo / Tutor</h2>
-
-          <div className="ficha-tutor-preview">
-            <div>
-              <strong style={{ color: '#9e1b32' }}>Programa seleccionado:</strong>{' '}
-              {CARRERAS_INFO[inscripcion.claveCarrera].nombre}
-            </div>
-            <div>
-              <strong style={{ color: '#5a2129' }}>Tutor(a) asignado(a):</strong>{' '}
-              {inscripcion.tutor_grupo}
-            </div>
-          </div>
-
-          <form onSubmit={manejarInscripcion}>
-            <div className="grid-formulario">
-              <div className="campo-grupo">
-                <label>Seleccionar Aspirante *</label>
+            <div className="filtros-barra">
+              <div className="campo-grupo" style={{ minWidth: '210px' }}>
+                <label>Grupo</label>
                 <select
                   className="select-control"
-                  required
-                  value={inscripcion.aspiranteId}
-                  onChange={(e) =>
-                    setInscripcion({ ...inscripcion, aspiranteId: e.target.value })
-                  }
+                  value={grupoSeleccionado}
+                  onChange={(e) => cargarTablaGrupal(e.target.value, '')}
                 >
-                  <option value="">-- Elige un aspirante --</option>
-                  {aspirantesDisponibles.map((asp) => (
-                    <option key={asp._id} value={asp._id}>
-                      {asp.nombre} {asp.apellido_p} {asp.apellido_m}
+                  <option value="">Seleccionar grupo...</option>
+                  {gruposDisponibles.map((grp) => (
+                    <option key={grp} value={grp}>
+                      {grp} ({alumnosActivos.filter((a) => a.academico?.grupo === grp).length}{' '}
+                      alumnos)
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="campo-grupo">
-                <label>Matrícula Asignada *</label>
-                <input
-                  className="input-control"
-                  placeholder="Ej. 24307055"
-                  required
-                  value={inscripcion.matricula}
-                  onChange={(e) =>
-                    setInscripcion({ ...inscripcion, matricula: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="campo-grupo">
-                <label>Carrera *</label>
+              <div className="campo-grupo" style={{ flex: 1, minWidth: '260px' }}>
+                <label>Asignatura</label>
                 <select
                   className="select-control"
-                  value={inscripcion.claveCarrera}
-                  onChange={(e) => {
-                    const clave = e.target.value;
-                    const info = CARRERAS_INFO[clave];
-                    setInscripcion({
-                      ...inscripcion,
-                      claveCarrera: clave,
-                      grupo: info.grupoDefault,
-                      tutor_grupo: info.tutor
-                    });
-                  }}
+                  value={materiaGrupoSeleccionada}
+                  disabled={!grupoSeleccionado}
+                  onChange={(e) => cargarTablaGrupal(grupoSeleccionado, e.target.value)}
                 >
-                  <option value="IRD">IRD — T.S.U. Infraestructura de Redes Digitales (4°)</option>
-                  <option value="LITIID">
-                    LITIID — Ing. en Tecnologías de la Información e Innovación Digital (7°)
-                  </option>
-                  <option value="IRIC">
-                    IRIC — Ing. en Redes Inteligentes y Ciberseguridad (10°)
-                  </option>
-                </select>
-              </div>
-
-              <div className="campo-grupo">
-                <label>Grupo *</label>
-                <input
-                  className="input-control"
-                  required
-                  value={inscripcion.grupo}
-                  onChange={(e) => setInscripcion({ ...inscripcion, grupo: e.target.value })}
-                />
-              </div>
-
-              <div className="campo-grupo">
-                <label>Tutor(a) de Grupo *</label>
-                <select
-                  className="select-control"
-                  value={inscripcion.tutor_grupo}
-                  onChange={(e) =>
-                    setInscripcion({ ...inscripcion, tutor_grupo: e.target.value })
-                  }
-                >
-                  <option value="M. en D. Arturo Hernández Jiménez">
-                    M. en D. Arturo Hernández Jiménez (IRD-401)
-                  </option>
-                  <option value="Mtra. Claudia Elena Ríos Mendoza">
-                    Mtra. Claudia Elena Ríos Mendoza (LITIID-701)
-                  </option>
-                  <option value="Ing. Roberto Carlos Domínguez Navarro">
-                    Ing. Roberto Carlos Domínguez Navarro (IRIC-1001)
-                  </option>
+                  <option value="">Seleccionar materia...</option>
+                  {materiasDelGrupo.map((m) => (
+                    <option key={m.clave} value={m.clave}>
+                      {m.clave} — {m.nombre} ({m.profesor})
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
-            <button type="submit" className="btn btn-primario">
-              Inscribir Alumno y Asignar Carga Académica
-            </button>
-          </form>
-        </section>
-      )}
-
-      {/* PESTAÑA 4: CAPTURA DE CALIFICACIONES DE FORMA GRUPAL */}
-      {pestana === 'grupal' && (
-        <section className="tarjeta">
-          <h2>Captura Grupal de Calificaciones y EGO</h2>
-
-          <div className="filtros-barra">
-            <div className="campo-grupo" style={{ minWidth: '220px' }}>
-              <label>1. Seleccionar Grupo</label>
-              <select
-                className="select-control"
-                value={grupoSeleccionado}
-                onChange={(e) => cargarTablaGrupal(e.target.value, '')}
-              >
-                <option value="">-- Elige un grupo --</option>
-                {gruposDisponibles.map((grp) => (
-                  <option key={grp} value={grp}>
-                    Grupo {grp} ({alumnosActivos.filter((a) => a.academico?.grupo === grp).length}{' '}
-                    alumnos)
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="campo-grupo" style={{ flex: 1, minWidth: '280px' }}>
-              <label>2. Seleccionar Asignatura del Grupo</label>
-              <select
-                className="select-control"
-                value={materiaGrupoSeleccionada}
-                disabled={!grupoSeleccionado}
-                onChange={(e) => cargarTablaGrupal(grupoSeleccionado, e.target.value)}
-              >
-                <option value="">-- Elige una materia --</option>
-                {materiasDelGrupo.map((m) => (
-                  <option key={m.clave} value={m.clave}>
-                    {m.clave} — {m.nombre} ({m.profesor})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {grupoSeleccionado && materiaGrupoSeleccionada && alumnosDelGrupo.length > 0 ? (
-            <div className="boleta-documento">
-              <div className="boleta-datos-centrados">
-                <div>
-                  <strong>Grupo</strong>
-                  {grupoSeleccionado}
+            {grupoSeleccionado && materiaGrupoSeleccionada && alumnosDelGrupo.length > 0 ? (
+              <div className="boleta-documento">
+                <div className="boleta-datos-centrados">
+                  <div>
+                    <strong>Grupo</strong>
+                    {grupoSeleccionado}
+                  </div>
+                  <div>
+                    <strong>Tutor(a)</strong>
+                    {alumnosDelGrupo[0]?.academico?.tutor_grupo || '—'}
+                  </div>
+                  <div>
+                    <strong>Alumnos inscritos</strong>
+                    {alumnosDelGrupo.length}
+                  </div>
                 </div>
-                <div>
-                  <strong>Tutor(a) del Grupo</strong>
-                  {alumnosDelGrupo[0]?.academico?.tutor_grupo || 'Sin asignar'}
-                </div>
-                <div>
-                  <strong>Total Alumnos</strong>
-                  {alumnosDelGrupo.length} estudiantes
-                </div>
-              </div>
 
-              <div className="tabla-contenedor">
-                <table className="tabla-boleta-centrada">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Matrícula</th>
-                      <th>Nombre del Alumno</th>
-                      <th>Parcial 1</th>
-                      <th>Parcial 2</th>
-                      <th>Parcial 3</th>
-                      <th>Promedio</th>
-                      <th>¿Se fue a EGO?</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alumnosDelGrupo.map((al, idx) => {
-                      const filaNota = notasGrupales[al.matricula] || {};
-                      return (
-                        <tr key={al._id}>
-                          <td>{idx + 1}</td>
-                          <td>
-                            <strong>{al.matricula}</strong>
-                          </td>
-                          <td>
-                            {al.nombre} {al.apellido_p} {al.apellido_m}
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="10"
-                              className="input-calificacion"
-                              value={filaNota.parcial_1 ?? ''}
-                              onChange={(e) =>
-                                cambiarNotaGrupal(al.matricula, 'parcial_1', e.target.value)
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="10"
-                              className="input-calificacion"
-                              value={filaNota.parcial_2 ?? ''}
-                              onChange={(e) =>
-                                cambiarNotaGrupal(al.matricula, 'parcial_2', e.target.value)
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="10"
-                              className="input-calificacion"
-                              value={filaNota.parcial_3 ?? ''}
-                              onChange={(e) =>
-                                cambiarNotaGrupal(al.matricula, 'parcial_3', e.target.value)
-                              }
-                            />
-                          </td>
-                          <td className="calificacion-final-celda">
-                            {filaNota.final !== '' && filaNota.final !== null
-                              ? filaNota.final
-                              : '—'}
-                          </td>
-                          <td>
-                            <label className="ego-control-celda">
+                <div className="tabla-contenedor">
+                  <table className="tabla-boleta-centrada">
+                    <thead>
+                      <tr>
+                        <th>Matrícula</th>
+                        <th>Alumno</th>
+                        <th>Parcial 1</th>
+                        <th>Parcial 2</th>
+                        <th>Parcial 3</th>
+                        <th>Calif. EGO</th>
+                        <th>Final</th>
+                        <th>Estatus</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {alumnosDelGrupo.map((al) => {
+                        const fila = notasGrupales[al.matricula] || {};
+                        return (
+                          <tr key={al._id}>
+                            <td>
+                              <strong>{al.matricula}</strong>
+                            </td>
+                            <td>
+                              {al.nombre} {al.apellido_p} {al.apellido_m}
+                            </td>
+                            <td>
                               <input
-                                type="checkbox"
-                                className="ego-checkbox"
-                                checked={Boolean(filaNota.ego)}
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
+                                className="input-calificacion"
+                                value={fila.parcial_1 ?? ''}
                                 onChange={(e) =>
-                                  cambiarNotaGrupal(al.matricula, 'ego', e.target.checked)
+                                  cambiarNotaGrupal(al.matricula, 'parcial_1', e.target.value)
                                 }
                               />
-                              <span
-                                className={`badge ${
-                                  filaNota.ego ? 'badge-ego' : 'badge-sin-ego'
-                                }`}
-                              >
-                                {filaNota.ego ? 'SÍ (EGO)' : 'NO'}
-                              </span>
-                            </label>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="boleta-resumen-barra">
-                <div className="promedio-caja">
-                  <span>Alumnos en EGO en esta materia</span>
-                  <strong>
-                    {
-                      Object.values(notasGrupales).filter((item) => Boolean(item.ego))
-                        .length
-                    }{' '}
-                    / {alumnosDelGrupo.length}
-                  </strong>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn btn-dorado"
-                  style={{ padding: '12px 24px', fontSize: '0.96rem' }}
-                  disabled={guardandoGrupo}
-                  onClick={guardarCalificacionesGrupales}
-                >
-                  {guardandoGrupo
-                    ? 'Guardando grupo...'
-                    : `Guardar Calificaciones de Todo el Grupo (${grupoSeleccionado})`}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p style={{ color: '#68595b', padding: '12px 0' }}>
-              Selecciona un grupo activo para desplegar la lista de alumnos y capturar sus notas.
-            </p>
-          )}
-        </section>
-      )}
-
-      {/* PESTAÑA 5: BOLETA INDIVIDUAL */}
-      {pestana === 'boleta' && (
-        <section className="tarjeta">
-          <h2>Boleta Individual de Calificaciones</h2>
-
-          <div className="filtros-barra">
-            <select
-              className="select-control"
-              value={matriculaBusqueda}
-              onChange={(e) => {
-                setMatriculaBusqueda(e.target.value);
-                if (e.target.value) consultarBoleta(e.target.value);
-              }}
-            >
-              <option value="">-- Seleccionar alumno inscrito --</option>
-              {alumnosActivos.map((al) => (
-                <option key={al._id} value={al.matricula}>
-                  {al.matricula} — {al.nombre} {al.apellido_p} {al.apellido_m}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="text"
-              className="input-control"
-              placeholder="O escribe la matrícula directamente..."
-              value={matriculaBusqueda}
-              onChange={(e) => setMatriculaBusqueda(e.target.value)}
-            />
-
-            <button className="btn btn-primario" onClick={() => consultarBoleta()}>
-              Consultar Boleta
-            </button>
-          </div>
-
-          {alumnoBoleta && (
-            <div className="boleta-documento">
-              <MembreteUTFV tituloDocumento="BOLETA OFICIAL DE CALIFICACIONES" />
-
-              <div className="boleta-datos-centrados">
-                <div>
-                  <strong>Alumno</strong>
-                  {alumnoBoleta.nombre} {alumnoBoleta.apellido_p} {alumnoBoleta.apellido_m}
-                </div>
-                <div>
-                  <strong>Matrícula</strong>
-                  {alumnoBoleta.matricula}
-                </div>
-                <div>
-                  <strong>Carrera</strong>
-                  {alumnoBoleta.academico?.carrera}
-                </div>
-                <div>
-                  <strong>Grupo y Cuatrimestre</strong>
-                  {alumnoBoleta.academico?.grupo} ({alumnoBoleta.academico?.cuatrimestre})
-                </div>
-                <div>
-                  <strong>Periodo Escolar</strong>
-                  {alumnoBoleta.academico?.periodo}
-                </div>
-                <div>
-                  <strong>Tutor(a) de Grupo</strong>
-                  {alumnoBoleta.academico?.tutor_grupo}
-                </div>
-              </div>
-
-              <div className="tabla-contenedor">
-                <table className="tabla-boleta-centrada">
-                  <thead>
-                    <tr>
-                      <th>Clave</th>
-                      <th>Asignatura</th>
-                      <th>Docente</th>
-                      <th>Parcial 1</th>
-                      <th>Parcial 2</th>
-                      <th>Parcial 3</th>
-                      <th>Promedio</th>
-                      <th>¿Se fue a EGO?</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alumnoBoleta.cargas_academicas?.[0]?.materias.map((mat) => {
-                      const notas = notasEditadas[mat.clave] || {};
-                      return (
-                        <tr key={mat.clave}>
-                          <td>
-                            <strong>{mat.clave}</strong>
-                          </td>
-                          <td>{mat.nombre}</td>
-                          <td>{mat.profesor}</td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="10"
-                              disabled={edicionBloqueada}
-                              className="input-calificacion"
-                              value={notas.parcial_1 ?? ''}
-                              onChange={(e) =>
-                                cambiarNotaInput(mat.clave, 'parcial_1', e.target.value)
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="10"
-                              disabled={edicionBloqueada}
-                              className="input-calificacion"
-                              value={notas.parcial_2 ?? ''}
-                              onChange={(e) =>
-                                cambiarNotaInput(mat.clave, 'parcial_2', e.target.value)
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              max="10"
-                              disabled={edicionBloqueada}
-                              className="input-calificacion"
-                              value={notas.parcial_3 ?? ''}
-                              onChange={(e) =>
-                                cambiarNotaInput(mat.clave, 'parcial_3', e.target.value)
-                              }
-                            />
-                          </td>
-                          <td className="calificacion-final-celda">
-                            {notas.final !== '' && notas.final !== null ? notas.final : '—'}
-                          </td>
-                          <td>
-                            <label className="ego-control-celda">
+                            </td>
+                            <td>
                               <input
-                                type="checkbox"
-                                className="ego-checkbox"
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
+                                className="input-calificacion"
+                                value={fila.parcial_2 ?? ''}
+                                onChange={(e) =>
+                                  cambiarNotaGrupal(al.matricula, 'parcial_2', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
+                                className="input-calificacion"
+                                value={fila.parcial_3 ?? ''}
+                                onChange={(e) =>
+                                  cambiarNotaGrupal(al.matricula, 'parcial_3', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
+                                placeholder={fila.ego ? 'Calif.' : '—'}
+                                className={`input-ego ${fila.ego ? 'activo-ego' : ''}`}
+                                value={fila.calificacion_ego ?? ''}
+                                onChange={(e) =>
+                                  cambiarNotaGrupal(
+                                    al.matricula,
+                                    'calificacion_ego',
+                                    e.target.value
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="calificacion-final-celda">
+                              {fila.final !== '' && fila.final !== null ? fila.final : '—'}
+                            </td>
+                            <td>
+                              {fila.ego ? (
+                                <span className="badge badge-ego">EGO</span>
+                              ) : fila.final !== '' && fila.final !== null ? (
+                                <span className="badge badge-aprobada">ORDINARIO</span>
+                              ) : (
+                                <span className="badge badge-aspirante">PENDIENTE</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="boleta-resumen-barra">
+                  <div className="promedio-caja">
+                    <span>Alumnos en EGO:</span>
+                    <strong>
+                      {
+                        Object.values(notasGrupales).filter((item) => Boolean(item.ego))
+                          .length
+                      }{' '}
+                      / {alumnosDelGrupo.length}
+                    </strong>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-primario"
+                    disabled={guardandoGrupo}
+                    onClick={guardarCalificacionesGrupales}
+                  >
+                    {guardandoGrupo
+                      ? 'Guardando...'
+                      : `Guardar Calificaciones del Grupo ${grupoSeleccionado}`}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p style={{ color: '#6b7280', fontSize: '0.88rem' }}>
+                Elige un grupo y una asignatura para capturar las calificaciones.
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* PESTAÑA 5: BOLETA INDIVIDUAL */}
+        {pestana === 'boleta' && (
+          <section className="tarjeta">
+            <div className="tarjeta-header">
+              <h2>Boleta Individual de Calificaciones</h2>
+            </div>
+
+            <div className="filtros-barra">
+              <select
+                className="select-control"
+                value={matriculaBusqueda}
+                onChange={(e) => {
+                  setMatriculaBusqueda(e.target.value);
+                  if (e.target.value) consultarBoleta(e.target.value);
+                }}
+              >
+                <option value="">Seleccionar alumno...</option>
+                {alumnosActivos.map((al) => (
+                  <option key={al._id} value={al.matricula}>
+                    {al.matricula} — {al.nombre} {al.apellido_p} {al.apellido_m}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="text"
+                className="input-control"
+                placeholder="Matrícula..."
+                value={matriculaBusqueda}
+                onChange={(e) => setMatriculaBusqueda(e.target.value)}
+              />
+
+              <button className="btn btn-primario" onClick={() => consultarBoleta()}>
+                Consultar
+              </button>
+            </div>
+
+            {alumnoBoleta && (
+              <div className="boleta-documento">
+                <MembreteUTFV tituloDocumento="BOLETA OFICIAL DE CALIFICACIONES" />
+
+                <div className="boleta-datos-centrados">
+                  <div>
+                    <strong>Alumno</strong>
+                    {alumnoBoleta.nombre} {alumnoBoleta.apellido_p} {alumnoBoleta.apellido_m}
+                  </div>
+                  <div>
+                    <strong>Matrícula</strong>
+                    {alumnoBoleta.matricula}
+                  </div>
+                  <div>
+                    <strong>Carrera</strong>
+                    {alumnoBoleta.academico?.carrera}
+                  </div>
+                  <div>
+                    <strong>Grupo y Cuatrimestre</strong>
+                    {alumnoBoleta.academico?.grupo} ({alumnoBoleta.academico?.cuatrimestre})
+                  </div>
+                  <div>
+                    <strong>Periodo</strong>
+                    {alumnoBoleta.academico?.periodo}
+                  </div>
+                  <div>
+                    <strong>Tutor(a)</strong>
+                    {alumnoBoleta.academico?.tutor_grupo}
+                  </div>
+                </div>
+
+                <div className="tabla-contenedor">
+                  <table className="tabla-boleta-centrada">
+                    <thead>
+                      <tr>
+                        <th>Clave</th>
+                        <th>Asignatura</th>
+                        <th>Docente</th>
+                        <th>Parcial 1</th>
+                        <th>Parcial 2</th>
+                        <th>Parcial 3</th>
+                        <th>Calif. EGO</th>
+                        <th>Promedio</th>
+                        <th>Estatus</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {alumnoBoleta.cargas_academicas?.[0]?.materias.map((mat) => {
+                        const notas = notasEditadas[mat.clave] || {};
+                        return (
+                          <tr key={mat.clave}>
+                            <td>
+                              <strong>{mat.clave}</strong>
+                            </td>
+                            <td>{mat.nombre}</td>
+                            <td>{mat.profesor}</td>
+                            <td>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
                                 disabled={edicionBloqueada}
-                                checked={Boolean(notas.ego)}
+                                className="input-calificacion"
+                                value={notas.parcial_1 ?? ''}
                                 onChange={(e) =>
-                                  cambiarNotaInput(mat.clave, 'ego', e.target.checked)
+                                  cambiarNotaInput(mat.clave, 'parcial_1', e.target.value)
                                 }
                               />
-                              <span
-                                className={`badge ${
-                                  notas.ego ? 'badge-ego' : 'badge-sin-ego'
-                                }`}
-                              >
-                                {notas.ego ? 'SÍ (EGO)' : 'NO'}
-                              </span>
-                            </label>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="boleta-resumen-barra">
-                <div className="promedio-caja">
-                  <span>Promedio General Automático</span>
-                  <strong>{calcularPromedioGeneral()}</strong>
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
+                                disabled={edicionBloqueada}
+                                className="input-calificacion"
+                                value={notas.parcial_2 ?? ''}
+                                onChange={(e) =>
+                                  cambiarNotaInput(mat.clave, 'parcial_2', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
+                                disabled={edicionBloqueada}
+                                className="input-calificacion"
+                                value={notas.parcial_3 ?? ''}
+                                onChange={(e) =>
+                                  cambiarNotaInput(mat.clave, 'parcial_3', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
+                                disabled={edicionBloqueada}
+                                placeholder={notas.ego ? 'Calif.' : '—'}
+                                className={`input-ego ${notas.ego ? 'activo-ego' : ''}`}
+                                value={notas.calificacion_ego ?? ''}
+                                onChange={(e) =>
+                                  cambiarNotaInput(mat.clave, 'calificacion_ego', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td className="calificacion-final-celda">
+                              {notas.final !== '' && notas.final !== null ? notas.final : '—'}
+                            </td>
+                            <td>
+                              {notas.ego ? (
+                                <span className="badge badge-ego">EGO</span>
+                              ) : notas.final !== '' && notas.final !== null ? (
+                                <span className="badge badge-aprobada">ORDINARIO</span>
+                              ) : (
+                                <span className="badge badge-aspirante">PENDIENTE</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
 
-                <div className="boleta-botones-acciones">
-                  {!edicionBloqueada ? (
+                <div className="boleta-resumen-barra">
+                  <div className="promedio-caja">
+                    <span>Promedio General:</span>
+                    <strong>{calcularPromedioGeneral()}</strong>
+                  </div>
+
+                  <div className="boleta-botones-acciones">
+                    {!edicionBloqueada ? (
+                      <button
+                        type="button"
+                        className="btn btn-primario"
+                        onClick={guardarTodasCalificaciones}
+                      >
+                        Guardar Calificaciones
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-secundario"
+                        onClick={() => {
+                          setEdicionBloqueada(false);
+                          mostrarAlerta('exito', 'Edición habilitada.');
+                        }}
+                      >
+                        Corregir Calificaciones
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       className="btn btn-dorado"
-                      onClick={guardarTodasCalificaciones}
+                      onClick={descargarBoletaPDF}
                     >
-                      Guardar Todas las Calificaciones
+                      Descargar PDF
                     </button>
-                  ) : (
+
                     <button
                       type="button"
-                      className="btn btn-terracota"
-                      onClick={() => {
-                        setEdicionBloqueada(false);
-                        mostrarAlerta(
-                          'exito',
-                          'Modo de corrección activado. Edita las notas o EGO y presiona Guardar.'
-                        );
-                      }}
+                      className="btn btn-secundario"
+                      onClick={guardarEnKardex}
                     >
-                      Corregir Calificaciones
+                      Guardar en Kardex
                     </button>
-                  )}
-
-                  <button
-                    type="button"
-                    className="btn btn-dorado"
-                    onClick={descargarBoletaPDF}
-                  >
-                    Descargar Boleta en PDF
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-vino"
-                    style={{ border: '1px solid #C48F4B' }}
-                    onClick={guardarEnKardex}
-                  >
-                    Guardar en Kardex
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* PESTAÑA 6: KARDEX / REGISTRO ACADÉMICO */}
-      {pestana === 'kardex' && (
-        <section className="tarjeta">
-          <h2>Registro Académico e Historial (Kardex)</h2>
-
-          <div className="filtros-barra">
-            <select
-              className="select-control"
-              value={matriculaBusqueda}
-              onChange={(e) => {
-                setMatriculaBusqueda(e.target.value);
-                if (e.target.value) consultarBoleta(e.target.value);
-              }}
-            >
-              <option value="">-- Seleccionar alumno inscrito --</option>
-              {alumnosActivos.map((al) => (
-                <option key={al._id} value={al.matricula}>
-                  {al.matricula} — {al.nombre} {al.apellido_p} {al.apellido_m}
-                </option>
-              ))}
-            </select>
-
-            <button className="btn btn-primario" onClick={() => consultarBoleta()}>
-              Consultar Kardex
-            </button>
-
-            {alumnoKardex && (
-              <button className="btn btn-dorado" onClick={descargarKardexPDF}>
-                Descargar Kardex en PDF
-              </button>
-            )}
-          </div>
-
-          {alumnoKardex && (
-            <div className="boleta-documento">
-              <MembreteUTFV tituloDocumento="KARDEX — HISTORIAL ACADÉMICO OFICIAL" />
-
-              <div className="boleta-datos-centrados">
-                <div>
-                  <strong>Estudiante</strong>
-                  {alumnoKardex.nombre} {alumnoKardex.apellido_p} {alumnoKardex.apellido_m}
-                </div>
-                <div>
-                  <strong>Matrícula</strong>
-                  {alumnoKardex.matricula}
-                </div>
-                <div>
-                  <strong>Programa Educativo</strong>
-                  {alumnoKardex.academico?.carrera}
-                </div>
-                <div>
-                  <strong>Tutor(a) de Grupo</strong>
-                  {alumnoKardex.academico?.tutor_grupo || 'Sin asignar'}
-                </div>
-              </div>
-
-              {(alumnoKardex.kardex || []).length === 0 ? (
-                <p style={{ textAlign: 'center', padding: '20px' }}>
-                  Aún no hay registros consolidados en el Kardex. Guarda calificaciones en la
-                  boleta individual o grupal para actualizarlo.
-                </p>
-              ) : (
-                alumnoKardex.kardex.map((bloque, idx) => (
-                  <div key={idx} className="kardex-bloque">
-                    <div className="kardex-encabezado-periodo">
-                      <h3>
-                        Cuatrimestre {bloque.cuatrimestre} • Periodo: {bloque.periodo}
-                      </h3>
-                      <span className="badge badge-activo">
-                        Promedio del Cuatrimestre: {bloque.promedio_cuatrimestre}
-                      </span>
-                    </div>
-
-                    <div className="tabla-contenedor">
-                      <table className="tabla-boleta-centrada">
-                        <thead>
-                          <tr>
-                            <th>Clave</th>
-                            <th>Asignatura</th>
-                            <th>Docente</th>
-                            <th>P1</th>
-                            <th>P2</th>
-                            <th>P3</th>
-                            <th>Final</th>
-                            <th>EGO</th>
-                            <th>Estatus</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {bloque.materias.map((m) => (
-                            <tr key={m.clave}>
-                              <td>
-                                <strong>{m.clave}</strong>
-                              </td>
-                              <td>{m.nombre}</td>
-                              <td>{m.profesor}</td>
-                              <td>{m.parcial_1 ?? '-'}</td>
-                              <td>{m.parcial_2 ?? '-'}</td>
-                              <td>{m.parcial_3 ?? '-'}</td>
-                              <td className="calificacion-final-celda">{m.final ?? '-'}</td>
-                              <td>
-                                <span
-                                  className={`badge ${
-                                    m.ego ? 'badge-ego' : 'badge-sin-ego'
-                                  }`}
-                                >
-                                  {m.ego ? 'SÍ (EGO)' : 'NO'}
-                                </span>
-                              </td>
-                              <td>
-                                <span
-                                  className={`badge ${
-                                    m.estatus_materia === 'ACREDITADA'
-                                      ? 'badge-aprobada'
-                                      : m.estatus_materia === 'SE FUE A EGO'
-                                      ? 'badge-ego'
-                                      : 'badge-aspirante'
-                                  }`}
-                                >
-                                  {m.estatus_materia}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
                   </div>
-                ))
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* PESTAÑA 6: KARDEX */}
+        {pestana === 'kardex' && (
+          <section className="tarjeta">
+            <div className="tarjeta-header">
+              <h2>Kardex — Historial Académico</h2>
+            </div>
+
+            <div className="filtros-barra">
+              <select
+                className="select-control"
+                value={matriculaBusqueda}
+                onChange={(e) => {
+                  setMatriculaBusqueda(e.target.value);
+                  if (e.target.value) consultarBoleta(e.target.value);
+                }}
+              >
+                <option value="">Seleccionar alumno...</option>
+                {alumnosActivos.map((al) => (
+                  <option key={al._id} value={al.matricula}>
+                    {al.matricula} — {al.nombre} {al.apellido_p} {al.apellido_m}
+                  </option>
+                ))}
+              </select>
+
+              <button className="btn btn-primario" onClick={() => consultarBoleta()}>
+                Consultar
+              </button>
+
+              {alumnoKardex && (
+                <button className="btn btn-dorado" onClick={descargarKardexPDF}>
+                  Descargar Kardex PDF
+                </button>
               )}
             </div>
-          )}
-        </section>
-      )}
-    </div>
+
+            {alumnoKardex && (
+              <div className="boleta-documento">
+                <MembreteUTFV tituloDocumento="KARDEX — HISTORIAL ACADÉMICO OFICIAL" />
+
+                <div className="boleta-datos-centrados">
+                  <div>
+                    <strong>Estudiante</strong>
+                    {alumnoKardex.nombre} {alumnoKardex.apellido_p} {alumnoKardex.apellido_m}
+                  </div>
+                  <div>
+                    <strong>Matrícula</strong>
+                    {alumnoKardex.matricula}
+                  </div>
+                  <div>
+                    <strong>Carrera</strong>
+                    {alumnoKardex.academico?.carrera}
+                  </div>
+                  <div>
+                    <strong>Tutor(a)</strong>
+                    {alumnoKardex.academico?.tutor_grupo || '—'}
+                  </div>
+                </div>
+
+                {(alumnoKardex.kardex || []).length === 0 ? (
+                  <p style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>
+                    Aún no hay registros en el Kardex.
+                  </p>
+                ) : (
+                  alumnoKardex.kardex.map((bloque, idx) => (
+                    <div key={idx} className="kardex-bloque">
+                      <div className="kardex-encabezado-periodo">
+                        <h3>
+                          Cuatrimestre {bloque.cuatrimestre} • {bloque.periodo}
+                        </h3>
+                        <span className="badge badge-activo">
+                          Promedio: {bloque.promedio_cuatrimestre}
+                        </span>
+                      </div>
+
+                      <div className="tabla-contenedor">
+                        <table className="tabla-boleta-centrada">
+                          <thead>
+                            <tr>
+                              <th>Clave</th>
+                              <th>Asignatura</th>
+                              <th>P1</th>
+                              <th>P2</th>
+                              <th>P3</th>
+                              <th>Calif. EGO</th>
+                              <th>Final</th>
+                              <th>Estatus</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {bloque.materias.map((m) => (
+                              <tr key={m.clave}>
+                                <td>
+                                  <strong>{m.clave}</strong>
+                                </td>
+                                <td>{m.nombre}</td>
+                                <td>{m.parcial_1 ?? '—'}</td>
+                                <td>{m.parcial_2 ?? '—'}</td>
+                                <td>{m.parcial_3 ?? '—'}</td>
+                                <td>
+                                  {m.calificacion_ego !== null && m.calificacion_ego !== undefined
+                                    ? m.calificacion_ego
+                                    : m.ego
+                                    ? 'Pendiente'
+                                    : '—'}
+                                </td>
+                                <td className="calificacion-final-celda">{m.final ?? '—'}</td>
+                                <td>
+                                  <span
+                                    className={`badge ${
+                                      m.estatus_materia?.includes('ACREDITADA') &&
+                                      !m.estatus_materia?.includes('NO')
+                                        ? 'badge-aprobada'
+                                        : m.estatus_materia?.includes('EGO')
+                                        ? 'badge-ego'
+                                        : 'badge-aspirante'
+                                    }`}
+                                  >
+                                    {m.estatus_materia}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </section>
+        )}
+      </main>
+    </>
   );
 }
 
