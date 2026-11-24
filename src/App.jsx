@@ -4,6 +4,28 @@ import { jsPDF } from 'jspdf';
 
 const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000/api/alumnos`;
 
+// Catálogo de carreras, grupos y tutores asignados
+const CARRERAS_INFO = {
+  IRD: {
+    nombre: 'T.S.U. en Infraestructura de Redes Digitales',
+    grupoDefault: 'IRD-401',
+    cuatrimestre: '4°',
+    tutor: 'M. en D. Arturo Hernández Jiménez'
+  },
+  LITIID: {
+    nombre: 'Lic. en Ing. en Tecnologías de la Información e Innovación Digital',
+    grupoDefault: 'LITIID-701',
+    cuatrimestre: '7°',
+    tutor: 'Mtra. Claudia Elena Ríos Mendoza'
+  },
+  IRIC: {
+    nombre: 'Ing. en Redes Inteligentes y Ciberseguridad',
+    grupoDefault: 'IRIC-1001',
+    cuatrimestre: '10°',
+    tutor: 'Ing. Roberto Carlos Domínguez Navarro'
+  }
+};
+
 // Catálogo local de respaldo para municipios del Estado de México por prefijo de CP
 const PREFIJOS_MUNICIPIOS = {
   '544': 'Nicolás Romero',
@@ -21,7 +43,7 @@ const PREFIJOS_MUNICIPIOS = {
   '545': 'Isidro Fabela'
 };
 
-// Componente vectorial del Logotipo Institucional UTFV
+// Logotipo vectorial UTFV
 function LogoUTFV({ ancho = 135 }) {
   return (
     <svg width={ancho} viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg" aria-label="Logo UTFV">
@@ -75,7 +97,7 @@ function LogoUTFV({ ancho = 135 }) {
   );
 }
 
-// Componente Membrete Oficial UTFV
+// Membrete Oficial UTFV
 function MembreteUTFV({ tituloDocumento }) {
   const fechaHoy = new Date().toLocaleDateString('es-MX', {
     year: 'numeric',
@@ -107,17 +129,16 @@ function MembreteUTFV({ tituloDocumento }) {
   );
 }
 
-// Función auxiliar para dibujar tablas centradas en jsPDF sin plugins externos
+// Dibujar tablas centradas en jsPDF puro (100% compatible con Vite)
 function dibujarTablaCentradaPDF(doc, startY, columnas, filas) {
   let y = startY;
   const altoEncabezado = 9;
 
-  // Encabezado guinda
   doc.setFillColor(158, 27, 50);
   doc.rect(10, y, 190, altoEncabezado, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
+  doc.setFontSize(8.2);
 
   columnas.forEach((col) => {
     doc.text(col.titulo, col.x + col.w / 2, y + 6, { align: 'center' });
@@ -125,14 +146,14 @@ function dibujarTablaCentradaPDF(doc, startY, columnas, filas) {
 
   y += altoEncabezado;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7.8);
 
   filas.forEach((fila, idxFila) => {
     const textosDivididos = columnas.map((col, i) =>
-      doc.splitTextToSize(String(fila[i] ?? '-'), col.w - 3)
+      doc.splitTextToSize(String(fila[i] ?? '-'), col.w - 2.5)
     );
     const maxLineas = Math.max(...textosDivididos.map((t) => t.length));
-    const altoFila = Math.max(8, maxLineas * 4.2 + 3.5);
+    const altoFila = Math.max(8, maxLineas * 4.1 + 3.5);
 
     if (y + altoFila > 272) {
       doc.addPage();
@@ -150,7 +171,7 @@ function dibujarTablaCentradaPDF(doc, startY, columnas, filas) {
     columnas.forEach((col, i) => {
       doc.rect(col.x, y, col.w, altoFila);
       const lineas = textosDivididos[i];
-      const inicioTextoY = y + (altoFila - (lineas.length - 1) * 4.2) / 2 + 1.2;
+      const inicioTextoY = y + (altoFila - (lineas.length - 1) * 4.1) / 2 + 1.2;
       doc.text(lineas, col.x + col.w / 2, inicioTextoY, { align: 'center' });
     });
 
@@ -176,6 +197,7 @@ function App() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstatus, setFiltroEstatus] = useState('TODOS');
 
+  // Formulario de nuevo aspirante + CP automático
   const [nuevoAspirante, setNuevoAspirante] = useState({
     nombre: '',
     apellido_p: '',
@@ -196,19 +218,28 @@ function App() {
   const [coloniasDisponibles, setColoniasDisponibles] = useState([]);
   const [buscandoCP, setBuscandoCP] = useState(false);
 
+  // Formulario de inscripción con tutores por carrera
   const [inscripcion, setInscripcion] = useState({
     aspiranteId: '',
     matricula: '',
     claveCarrera: 'IRD',
-    grupo: 'IRD-401',
-    tutor_grupo: 'M. en D. Arturo Hernández Jiménez'
+    grupo: CARRERAS_INFO.IRD.grupoDefault,
+    tutor_grupo: CARRERAS_INFO.IRD.tutor
   });
 
+  // Captura GRUPAL de calificaciones
+  const [grupoSeleccionado, setGrupoSeleccionado] = useState('');
+  const [materiaGrupoSeleccionada, setMateriaGrupoSeleccionada] = useState('');
+  const [notasGrupales, setNotasGrupales] = useState({});
+  const [guardandoGrupo, setGuardandoGrupo] = useState(false);
+
+  // Consulta y captura de boleta individual
   const [matriculaBusqueda, setMatriculaBusqueda] = useState('');
   const [alumnoBoleta, setAlumnoBoleta] = useState(null);
   const [notasEditadas, setNotasEditadas] = useState({});
   const [edicionBloqueada, setEdicionBloqueada] = useState(false);
 
+  // Consulta de Kardex
   const [alumnoKardex, setAlumnoKardex] = useState(null);
 
   const mostrarAlerta = (tipo, texto) => {
@@ -260,6 +291,7 @@ function App() {
     }
   }, [autenticado]);
 
+  // Automatización de Código Postal
   const manejarCambioCP = async (valorRaw) => {
     const cpLimpio = valorRaw.replace(/\D/g, '').slice(0, 5);
     setNuevoAspirante((prev) => ({ ...prev, c_p: cpLimpio }));
@@ -377,8 +409,8 @@ function App() {
         aspiranteId: '',
         matricula: '',
         claveCarrera: 'IRD',
-        grupo: 'IRD-401',
-        tutor_grupo: 'M. en D. Arturo Hernández Jiménez'
+        grupo: CARRERAS_INFO.IRD.grupoDefault,
+        tutor_grupo: CARRERAS_INFO.IRD.tutor
       });
       cargarAlumnos();
       setPestana('padron');
@@ -398,6 +430,96 @@ function App() {
     }
   };
 
+  // ================= LÓGICA DE CAPTURA GRUPAL =================
+  const alumnosActivos = alumnos.filter((a) => a.estatus === 'ALUMNO_ACTIVO');
+  const aspirantesDisponibles = alumnos.filter((a) => a.estatus === 'ASPIRANTE');
+
+  const gruposDisponibles = Array.from(
+    new Set(alumnosActivos.map((a) => a.academico?.grupo).filter(Boolean))
+  ).sort();
+
+  const alumnosDelGrupo = alumnosActivos.filter(
+    (a) => a.academico?.grupo === grupoSeleccionado
+  );
+
+  const materiasDelGrupo = alumnosDelGrupo[0]?.cargas_academicas?.[0]?.materias || [];
+
+  const cargarTablaGrupal = (grupo, claveMat) => {
+    setGrupoSeleccionado(grupo);
+    const integrantes = alumnosActivos.filter((a) => a.academico?.grupo === grupo);
+    const listaMats = integrantes[0]?.cargas_academicas?.[0]?.materias || [];
+    const materiaObjetivo = claveMat || listaMats[0]?.clave || '';
+    setMateriaGrupoSeleccionada(materiaObjetivo);
+
+    const mapaGrupal = {};
+    integrantes.forEach((al) => {
+      const mat = al.cargas_academicas?.[0]?.materias?.find(
+        (m) => m.clave === materiaObjetivo
+      );
+      const fin = mat?.calificaciones?.final ?? '';
+      const egoAuto =
+        Boolean(mat?.calificaciones?.ego) || (fin !== '' && Number(fin) < 7.0);
+
+      mapaGrupal[al.matricula] = {
+        parcial_1: mat?.calificaciones?.parcial_1 ?? '',
+        parcial_2: mat?.calificaciones?.parcial_2 ?? '',
+        parcial_3: mat?.calificaciones?.parcial_3 ?? '',
+        final: fin,
+        ego: egoAuto
+      };
+    });
+    setNotasGrupales(mapaGrupal);
+  };
+
+  const cambiarNotaGrupal = (matricula, campo, valor) => {
+    setNotasGrupales((prev) => {
+      const actual = { ...prev[matricula], [campo]: valor };
+
+      if (campo === 'ego') {
+        actual.ego = Boolean(valor);
+      } else if (campo !== 'final') {
+        const validos = [actual.parcial_1, actual.parcial_2, actual.parcial_3]
+          .filter((v) => v !== '' && v !== null && !isNaN(Number(v)))
+          .map(Number);
+
+        if (validos.length > 0) {
+          const prom = Number(
+            (validos.reduce((acc, n) => acc + n, 0) / validos.length).toFixed(1)
+          );
+          actual.final = prom;
+          actual.ego = prom < 7.0;
+        } else {
+          actual.final = '';
+          actual.ego = false;
+        }
+      }
+
+      return { ...prev, [matricula]: actual };
+    });
+  };
+
+  const guardarCalificacionesGrupales = async () => {
+    if (!grupoSeleccionado || !materiaGrupoSeleccionada) {
+      mostrarAlerta('error', 'Selecciona primero un grupo y una materia.');
+      return;
+    }
+    setGuardandoGrupo(true);
+    try {
+      const res = await axios.put(`${API_URL}/calificaciones-grupo`, {
+        grupo: grupoSeleccionado,
+        claveMateria: materiaGrupoSeleccionada,
+        registros: notasGrupales
+      });
+      mostrarAlerta('exito', res.data.mensaje);
+      await cargarAlumnos();
+    } catch (error) {
+      mostrarAlerta('error', 'Error al guardar las calificaciones del grupo.');
+    } finally {
+      setGuardandoGrupo(false);
+    }
+  };
+
+  // ================= LÓGICA BOLETA INDIVIDUAL Y KARDEX =================
   const consultarBoleta = async (mat, irAPestana = null) => {
     const matriculaObjetivo = (mat || matriculaBusqueda).trim();
     if (!matriculaObjetivo) {
@@ -420,6 +542,9 @@ function App() {
           const p2 = m.calificaciones?.parcial_2 ?? '';
           const p3 = m.calificaciones?.parcial_3 ?? '';
           const fin = m.calificaciones?.final ?? '';
+          const egoFlag =
+            Boolean(m.calificaciones?.ego) || (fin !== '' && Number(fin) < 7.0);
+
           if (p1 !== '' || p2 !== '' || p3 !== '' || fin !== '') {
             tieneCalificacionesGuardadas = true;
           }
@@ -427,7 +552,8 @@ function App() {
             parcial_1: p1,
             parcial_2: p2,
             parcial_3: p3,
-            final: fin
+            final: fin,
+            ego: egoFlag
           };
         });
       }
@@ -446,16 +572,22 @@ function App() {
     setNotasEditadas((prev) => {
       const actual = { ...prev[claveMateria], [campo]: valor };
 
-      if (campo !== 'final') {
+      if (campo === 'ego') {
+        actual.ego = Boolean(valor);
+      } else if (campo !== 'final') {
         const parcialesValidos = [actual.parcial_1, actual.parcial_2, actual.parcial_3]
           .filter((v) => v !== '' && v !== null && !isNaN(Number(v)))
           .map(Number);
 
         if (parcialesValidos.length > 0) {
-          const suma = parcialesValidos.reduce((acc, n) => acc + n, 0);
-          actual.final = (suma / parcialesValidos.length).toFixed(1);
+          const prom = Number(
+            (parcialesValidos.reduce((acc, n) => acc + n, 0) / parcialesValidos.length).toFixed(1)
+          );
+          actual.final = prom;
+          actual.ego = prom < 7.0;
         } else {
           actual.final = '';
+          actual.ego = false;
         }
       }
 
@@ -478,7 +610,7 @@ function App() {
       setEdicionBloqueada(true);
       mostrarAlerta(
         'exito',
-        'Todas las calificaciones se guardaron de una sola vez y se actualizaron en el Kardex.'
+        'Todas las calificaciones, estatus EGO y Kardex se guardaron correctamente.'
       );
       cargarAlumnos();
     } catch (error) {
@@ -510,14 +642,13 @@ function App() {
     return (suma / lista.length).toFixed(2);
   };
 
-  // Generar PDF oficial con membrete de la Boleta (100% compatible con Vite)
+  // Descargar PDF oficial de la Boleta con columna EGO
   const descargarBoletaPDF = () => {
     if (!alumnoBoleta) return;
     try {
       const doc = new jsPDF();
       const promedioGen = calcularPromedioGeneral();
 
-      // Membrete institucional UTFV
       doc.setFillColor(158, 27, 50);
       doc.rect(0, 0, 210, 34, 'F');
       doc.setFillColor(196, 143, 75);
@@ -536,7 +667,6 @@ function App() {
         align: 'center'
       });
 
-      // Datos del alumno centrados
       doc.setTextColor(44, 36, 37);
       doc.setFontSize(10);
       const nombreCompleto = `${alumnoBoleta.nombre} ${alumnoBoleta.apellido_p} ${alumnoBoleta.apellido_m}`;
@@ -558,13 +688,14 @@ function App() {
       );
 
       const columnas = [
-        { titulo: 'Clave', x: 10, w: 22 },
-        { titulo: 'Asignatura', x: 32, w: 64 },
-        { titulo: 'Docente', x: 96, w: 48 },
-        { titulo: 'P1', x: 144, w: 13 },
-        { titulo: 'P2', x: 157, w: 13 },
-        { titulo: 'P3', x: 170, w: 13 },
-        { titulo: 'Final', x: 183, w: 17 }
+        { titulo: 'Clave', x: 10, w: 20 },
+        { titulo: 'Asignatura', x: 30, w: 56 },
+        { titulo: 'Docente', x: 86, w: 42 },
+        { titulo: 'P1', x: 128, w: 12 },
+        { titulo: 'P2', x: 140, w: 12 },
+        { titulo: 'P3', x: 152, w: 12 },
+        { titulo: 'Final', x: 164, w: 15 },
+        { titulo: 'EGO', x: 179, w: 21 }
       ];
 
       const filas = (alumnoBoleta.cargas_academicas?.[0]?.materias || []).map((mat) => {
@@ -576,13 +707,13 @@ function App() {
           n.parcial_1 !== '' && n.parcial_1 !== null ? n.parcial_1 : '-',
           n.parcial_2 !== '' && n.parcial_2 !== null ? n.parcial_2 : '-',
           n.parcial_3 !== '' && n.parcial_3 !== null ? n.parcial_3 : '-',
-          n.final !== '' && n.final !== null ? n.final : '-'
+          n.final !== '' && n.final !== null ? n.final : '-',
+          n.ego ? 'SÍ (EGO)' : 'NO'
         ];
       });
 
       const finalY = dibujarTablaCentradaPDF(doc, 74, columnas, filas) + 12;
 
-      // Caja de Promedio General
       doc.setFillColor(107, 42, 50);
       doc.roundedRect(65, finalY, 80, 15, 3, 3, 'F');
       doc.setTextColor(255, 255, 255);
@@ -590,7 +721,6 @@ function App() {
       doc.setFont('helvetica', 'bold');
       doc.text(`PROMEDIO GENERAL: ${promedioGen}`, 105, finalY + 10, { align: 'center' });
 
-      // Firmas institucionales
       doc.setTextColor(80, 80, 80);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
@@ -598,7 +728,9 @@ function App() {
       doc.text('Control Escolar UTFV', 60, finalY + 41, { align: 'center' });
 
       doc.line(120, finalY + 36, 180, finalY + 36);
-      doc.text('Tutor de Grupo', 150, finalY + 41, { align: 'center' });
+      doc.text(alumnoBoleta.academico?.tutor_grupo || 'Tutor de Grupo', 150, finalY + 41, {
+        align: 'center'
+      });
 
       doc.save(`Boleta_UTFV_${alumnoBoleta.matricula}.pdf`);
       mostrarAlerta('exito', `Boleta_UTFV_${alumnoBoleta.matricula}.pdf descargada correctamente.`);
@@ -607,7 +739,7 @@ function App() {
     }
   };
 
-  // Generar PDF oficial del Kardex Académico (100% compatible con Vite)
+  // Descargar PDF oficial del Kardex con columna EGO
   const descargarKardexPDF = () => {
     if (!alumnoKardex) return;
     try {
@@ -642,13 +774,14 @@ function App() {
       const historial = alumnoKardex.kardex || [];
 
       const columnasKardex = [
-        { titulo: 'Clave', x: 10, w: 24 },
-        { titulo: 'Asignatura', x: 34, w: 74 },
-        { titulo: 'P1', x: 108, w: 14 },
-        { titulo: 'P2', x: 122, w: 14 },
-        { titulo: 'P3', x: 136, w: 14 },
-        { titulo: 'Final', x: 150, w: 18 },
-        { titulo: 'Estatus', x: 168, w: 32 }
+        { titulo: 'Clave', x: 10, w: 22 },
+        { titulo: 'Asignatura', x: 32, w: 66 },
+        { titulo: 'P1', x: 98, w: 13 },
+        { titulo: 'P2', x: 111, w: 13 },
+        { titulo: 'P3', x: 124, w: 13 },
+        { titulo: 'Final', x: 137, w: 15 },
+        { titulo: 'EGO', x: 152, w: 18 },
+        { titulo: 'Estatus', x: 170, w: 30 }
       ];
 
       historial.forEach((bloque) => {
@@ -669,6 +802,7 @@ function App() {
           m.parcial_2 ?? '-',
           m.parcial_3 ?? '-',
           m.final ?? '-',
+          m.ego ? 'SÍ (EGO)' : 'NO',
           m.estatus_materia
         ]);
 
@@ -682,14 +816,15 @@ function App() {
     }
   };
 
+  // ================= PANTALLA DE LOGIN ADMINISTRADOR =================
   if (!autenticado) {
     return (
       <div className="login-pantalla">
         <div className="login-tarjeta">
-          <LogoUTFV ancho={165} />
+          <LogoUTFV ancho={170} />
           <h1 className="login-titulo">Acceso Administrativo</h1>
           <p className="login-subtitulo">
-            Sistema de Control Escolar y Gestión Académica
+            Sistema Integral de Control Escolar y Gestión Académica
           </p>
 
           {errorLogin && (
@@ -726,7 +861,7 @@ function App() {
             <button
               type="submit"
               className="btn btn-primario"
-              style={{ width: '100%', padding: '12px', fontSize: '1rem' }}
+              style={{ width: '100%', padding: '13px', fontSize: '1rem' }}
               disabled={validandoLogin}
             >
               {validandoLogin ? 'Verificando acceso...' : 'Iniciar Sesión'}
@@ -751,38 +886,67 @@ function App() {
     return coincideTexto && coincideEstatus;
   });
 
-  const aspirantesDisponibles = alumnos.filter((a) => a.estatus === 'ASPIRANTE');
-  const alumnosActivos = alumnos.filter((a) => a.estatus === 'ALUMNO_ACTIVO');
-
   return (
     <div className="contenedor-principal">
       <header className="encabezado">
         <div className="encabezado-izquierda">
           <div className="logo-badge-blanco">
-            <LogoUTFV ancho={92} />
+            <LogoUTFV ancho={94} />
           </div>
           <div>
             <h1>Sistema de Gestión Académica — UTFV</h1>
-            <p>Universidad Tecnológica Fidel Velázquez • Control Escolar y Kardex</p>
+            <p>Universidad Tecnológica Fidel Velázquez • Control Escolar, Boletas y Kardex</p>
           </div>
         </div>
 
-        <div className="estadisticas-barra">
-          <div className="stat-chip">Total: {alumnos.length}</div>
-          <div className="stat-chip">Aspirantes: {aspirantesDisponibles.length}</div>
-          <div className="stat-chip">Activos: {alumnosActivos.length}</div>
-          <button className="btn-salir" onClick={cerrarSesion}>
-            Cerrar Sesión
-          </button>
-        </div>
+        <button className="btn-salir" onClick={cerrarSesion}>
+          Cerrar Sesión
+        </button>
       </header>
 
+      {/* TARJETAS KPI VISUALES */}
+      <section className="kpi-grid">
+        <div className="kpi-card">
+          <div className="kpi-info">
+            <span>Matrícula Total</span>
+            <strong>{alumnos.length}</strong>
+          </div>
+          <div className="kpi-icono">∑</div>
+        </div>
+        <div className="kpi-card dorado">
+          <div className="kpi-info">
+            <span>Aspirantes</span>
+            <strong>{aspirantesDisponibles.length}</strong>
+          </div>
+          <div className="kpi-icono" style={{ color: '#a85327', background: '#fbf3e6' }}>
+            ★
+          </div>
+        </div>
+        <div className="kpi-card vino">
+          <div className="kpi-info">
+            <span>Alumnos Activos</span>
+            <strong>{alumnosActivos.length}</strong>
+          </div>
+          <div className="kpi-icono">✓</div>
+        </div>
+        <div className="kpi-card terracota">
+          <div className="kpi-info">
+            <span>Grupos Activos</span>
+            <strong>{gruposDisponibles.length}</strong>
+          </div>
+          <div className="kpi-icono" style={{ color: '#5a2129', background: '#f5ecee' }}>
+            ☰
+          </div>
+        </div>
+      </section>
+
+      {/* BARRA DE NAVEGACIÓN */}
       <nav className="navegacion">
         <button
           className={`btn-tab ${pestana === 'padron' ? 'activo' : ''}`}
           onClick={() => setPestana('padron')}
         >
-          1. Padrón General ({alumnos.length})
+          1. Padrón General
         </button>
         <button
           className={`btn-tab ${pestana === 'aspirante' ? 'activo' : ''}`}
@@ -794,19 +958,30 @@ function App() {
           className={`btn-tab ${pestana === 'inscripcion' ? 'activo' : ''}`}
           onClick={() => setPestana('inscripcion')}
         >
-          3. Inscripción y Carga Académica
+          3. Inscripción y Tutores
+        </button>
+        <button
+          className={`btn-tab ${pestana === 'grupal' ? 'activo' : ''}`}
+          onClick={() => {
+            setPestana('grupal');
+            if (!grupoSeleccionado && gruposDisponibles.length > 0) {
+              cargarTablaGrupal(gruposDisponibles[0], '');
+            }
+          }}
+        >
+          4. Captura Grupal
         </button>
         <button
           className={`btn-tab ${pestana === 'boleta' ? 'activo' : ''}`}
           onClick={() => setPestana('boleta')}
         >
-          4. Boleta y Calificaciones
+          5. Boleta Individual
         </button>
         <button
           className={`btn-tab ${pestana === 'kardex' ? 'activo' : ''}`}
           onClick={() => setPestana('kardex')}
         >
-          5. Kardex / Historial Académico
+          6. Kardex Académico
         </button>
       </nav>
 
@@ -822,6 +997,7 @@ function App() {
         </div>
       )}
 
+      {/* PESTAÑA 1: PADRÓN GENERAL */}
       {pestana === 'padron' && (
         <section className="tarjeta">
           <h2>Padrón de Aspirantes y Alumnos Activos</h2>
@@ -856,7 +1032,7 @@ function App() {
                     <th>Matrícula</th>
                     <th>Nombre Completo</th>
                     <th>Carrera / Grupo</th>
-                    <th>Municipio</th>
+                    <th>Tutor de Grupo</th>
                     <th>Acciones</th>
                   </tr>
                 </thead>
@@ -885,7 +1061,7 @@ function App() {
                             ? `${alumno.academico.grupo} — ${alumno.academico.carrera}`
                             : 'Pendiente de inscripción'}
                         </td>
-                        <td>{alumno.direccion?.municipio || 'N/A'}</td>
+                        <td>{alumno.academico?.tutor_grupo || 'Sin asignar'}</td>
                         <td>
                           <div className="acciones-celda">
                             {alumno.estatus === 'ASPIRANTE' ? (
@@ -935,6 +1111,7 @@ function App() {
         </section>
       )}
 
+      {/* PESTAÑA 2: REGISTRO DE ASPIRANTES */}
       {pestana === 'aspirante' && (
         <section className="tarjeta">
           <h2>Registro de Nuevo Aspirante</h2>
@@ -1153,9 +1330,22 @@ function App() {
         </section>
       )}
 
+      {/* PESTAÑA 3: INSCRIPCIÓN Y TUTORES POR GRUPO */}
       {pestana === 'inscripcion' && (
         <section className="tarjeta">
-          <h2>Inscripción Oficial y Asignación de Tira de Materias</h2>
+          <h2>Inscripción Oficial y Asignación de Grupo / Tutor</h2>
+
+          <div className="ficha-tutor-preview">
+            <div>
+              <strong style={{ color: '#9e1b32' }}>Programa seleccionado:</strong>{' '}
+              {CARRERAS_INFO[inscripcion.claveCarrera].nombre}
+            </div>
+            <div>
+              <strong style={{ color: '#5a2129' }}>Tutor(a) asignado(a):</strong>{' '}
+              {inscripcion.tutor_grupo}
+            </div>
+          </div>
+
           <form onSubmit={manejarInscripcion}>
             <div className="grid-formulario">
               <div className="campo-grupo">
@@ -1197,16 +1387,12 @@ function App() {
                   value={inscripcion.claveCarrera}
                   onChange={(e) => {
                     const clave = e.target.value;
-                    const grupoDefault =
-                      clave === 'IRD'
-                        ? 'IRD-401'
-                        : clave === 'LITIID'
-                        ? 'LITIID-701'
-                        : 'IRIC-1001';
+                    const info = CARRERAS_INFO[clave];
                     setInscripcion({
                       ...inscripcion,
                       claveCarrera: clave,
-                      grupo: grupoDefault
+                      grupo: info.grupoDefault,
+                      tutor_grupo: info.tutor
                     });
                   }}
                 >
@@ -1224,7 +1410,6 @@ function App() {
                 <label>Grupo *</label>
                 <input
                   className="input-control"
-                  placeholder="Ej. IRD-401"
                   required
                   value={inscripcion.grupo}
                   onChange={(e) => setInscripcion({ ...inscripcion, grupo: e.target.value })}
@@ -1232,28 +1417,225 @@ function App() {
               </div>
 
               <div className="campo-grupo">
-                <label>Tutor de Grupo *</label>
-                <input
-                  className="input-control"
-                  required
+                <label>Tutor(a) de Grupo *</label>
+                <select
+                  className="select-control"
                   value={inscripcion.tutor_grupo}
                   onChange={(e) =>
                     setInscripcion({ ...inscripcion, tutor_grupo: e.target.value })
                   }
-                />
+                >
+                  <option value="M. en D. Arturo Hernández Jiménez">
+                    M. en D. Arturo Hernández Jiménez (IRD-401)
+                  </option>
+                  <option value="Mtra. Claudia Elena Ríos Mendoza">
+                    Mtra. Claudia Elena Ríos Mendoza (LITIID-701)
+                  </option>
+                  <option value="Ing. Roberto Carlos Domínguez Navarro">
+                    Ing. Roberto Carlos Domínguez Navarro (IRIC-1001)
+                  </option>
+                </select>
               </div>
             </div>
 
             <button type="submit" className="btn btn-primario">
-              Inscribir Alumno y Asignar Materias
+              Inscribir Alumno y Asignar Carga Académica
             </button>
           </form>
         </section>
       )}
 
+      {/* PESTAÑA 4: CAPTURA DE CALIFICACIONES DE FORMA GRUPAL */}
+      {pestana === 'grupal' && (
+        <section className="tarjeta">
+          <h2>Captura Grupal de Calificaciones y EGO</h2>
+
+          <div className="filtros-barra">
+            <div className="campo-grupo" style={{ minWidth: '220px' }}>
+              <label>1. Seleccionar Grupo</label>
+              <select
+                className="select-control"
+                value={grupoSeleccionado}
+                onChange={(e) => cargarTablaGrupal(e.target.value, '')}
+              >
+                <option value="">-- Elige un grupo --</option>
+                {gruposDisponibles.map((grp) => (
+                  <option key={grp} value={grp}>
+                    Grupo {grp} ({alumnosActivos.filter((a) => a.academico?.grupo === grp).length}{' '}
+                    alumnos)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="campo-grupo" style={{ flex: 1, minWidth: '280px' }}>
+              <label>2. Seleccionar Asignatura del Grupo</label>
+              <select
+                className="select-control"
+                value={materiaGrupoSeleccionada}
+                disabled={!grupoSeleccionado}
+                onChange={(e) => cargarTablaGrupal(grupoSeleccionado, e.target.value)}
+              >
+                <option value="">-- Elige una materia --</option>
+                {materiasDelGrupo.map((m) => (
+                  <option key={m.clave} value={m.clave}>
+                    {m.clave} — {m.nombre} ({m.profesor})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {grupoSeleccionado && materiaGrupoSeleccionada && alumnosDelGrupo.length > 0 ? (
+            <div className="boleta-documento">
+              <div className="boleta-datos-centrados">
+                <div>
+                  <strong>Grupo</strong>
+                  {grupoSeleccionado}
+                </div>
+                <div>
+                  <strong>Tutor(a) del Grupo</strong>
+                  {alumnosDelGrupo[0]?.academico?.tutor_grupo || 'Sin asignar'}
+                </div>
+                <div>
+                  <strong>Total Alumnos</strong>
+                  {alumnosDelGrupo.length} estudiantes
+                </div>
+              </div>
+
+              <div className="tabla-contenedor">
+                <table className="tabla-boleta-centrada">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Matrícula</th>
+                      <th>Nombre del Alumno</th>
+                      <th>Parcial 1</th>
+                      <th>Parcial 2</th>
+                      <th>Parcial 3</th>
+                      <th>Promedio</th>
+                      <th>¿Se fue a EGO?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {alumnosDelGrupo.map((al, idx) => {
+                      const filaNota = notasGrupales[al.matricula] || {};
+                      return (
+                        <tr key={al._id}>
+                          <td>{idx + 1}</td>
+                          <td>
+                            <strong>{al.matricula}</strong>
+                          </td>
+                          <td>
+                            {al.nombre} {al.apellido_p} {al.apellido_m}
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="10"
+                              className="input-calificacion"
+                              value={filaNota.parcial_1 ?? ''}
+                              onChange={(e) =>
+                                cambiarNotaGrupal(al.matricula, 'parcial_1', e.target.value)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="10"
+                              className="input-calificacion"
+                              value={filaNota.parcial_2 ?? ''}
+                              onChange={(e) =>
+                                cambiarNotaGrupal(al.matricula, 'parcial_2', e.target.value)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="10"
+                              className="input-calificacion"
+                              value={filaNota.parcial_3 ?? ''}
+                              onChange={(e) =>
+                                cambiarNotaGrupal(al.matricula, 'parcial_3', e.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="calificacion-final-celda">
+                            {filaNota.final !== '' && filaNota.final !== null
+                              ? filaNota.final
+                              : '—'}
+                          </td>
+                          <td>
+                            <label className="ego-control-celda">
+                              <input
+                                type="checkbox"
+                                className="ego-checkbox"
+                                checked={Boolean(filaNota.ego)}
+                                onChange={(e) =>
+                                  cambiarNotaGrupal(al.matricula, 'ego', e.target.checked)
+                                }
+                              />
+                              <span
+                                className={`badge ${
+                                  filaNota.ego ? 'badge-ego' : 'badge-sin-ego'
+                                }`}
+                              >
+                                {filaNota.ego ? 'SÍ (EGO)' : 'NO'}
+                              </span>
+                            </label>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="boleta-resumen-barra">
+                <div className="promedio-caja">
+                  <span>Alumnos en EGO en esta materia</span>
+                  <strong>
+                    {
+                      Object.values(notasGrupales).filter((item) => Boolean(item.ego))
+                        .length
+                    }{' '}
+                    / {alumnosDelGrupo.length}
+                  </strong>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-dorado"
+                  style={{ padding: '12px 24px', fontSize: '0.96rem' }}
+                  disabled={guardandoGrupo}
+                  onClick={guardarCalificacionesGrupales}
+                >
+                  {guardandoGrupo
+                    ? 'Guardando grupo...'
+                    : `Guardar Calificaciones de Todo el Grupo (${grupoSeleccionado})`}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p style={{ color: '#68595b', padding: '12px 0' }}>
+              Selecciona un grupo activo para desplegar la lista de alumnos y capturar sus notas.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* PESTAÑA 5: BOLETA INDIVIDUAL */}
       {pestana === 'boleta' && (
         <section className="tarjeta">
-          <h2>Boleta de Calificaciones y Evaluación Parcial</h2>
+          <h2>Boleta Individual de Calificaciones</h2>
 
           <div className="filtros-barra">
             <select
@@ -1311,7 +1693,7 @@ function App() {
                   {alumnoBoleta.academico?.periodo}
                 </div>
                 <div>
-                  <strong>Tutor de Grupo</strong>
+                  <strong>Tutor(a) de Grupo</strong>
                   {alumnoBoleta.academico?.tutor_grupo}
                 </div>
               </div>
@@ -1326,7 +1708,8 @@ function App() {
                       <th>Parcial 1</th>
                       <th>Parcial 2</th>
                       <th>Parcial 3</th>
-                      <th>Promedio Materia</th>
+                      <th>Promedio</th>
+                      <th>¿Se fue a EGO?</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1384,6 +1767,26 @@ function App() {
                           <td className="calificacion-final-celda">
                             {notas.final !== '' && notas.final !== null ? notas.final : '—'}
                           </td>
+                          <td>
+                            <label className="ego-control-celda">
+                              <input
+                                type="checkbox"
+                                className="ego-checkbox"
+                                disabled={edicionBloqueada}
+                                checked={Boolean(notas.ego)}
+                                onChange={(e) =>
+                                  cambiarNotaInput(mat.clave, 'ego', e.target.checked)
+                                }
+                              />
+                              <span
+                                className={`badge ${
+                                  notas.ego ? 'badge-ego' : 'badge-sin-ego'
+                                }`}
+                              >
+                                {notas.ego ? 'SÍ (EGO)' : 'NO'}
+                              </span>
+                            </label>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1414,7 +1817,7 @@ function App() {
                         setEdicionBloqueada(false);
                         mostrarAlerta(
                           'exito',
-                          'Modo de corrección activado. Edita las notas y presiona Guardar.'
+                          'Modo de corrección activado. Edita las notas o EGO y presiona Guardar.'
                         );
                       }}
                     >
@@ -1445,6 +1848,7 @@ function App() {
         </section>
       )}
 
+      {/* PESTAÑA 6: KARDEX / REGISTRO ACADÉMICO */}
       {pestana === 'kardex' && (
         <section className="tarjeta">
           <h2>Registro Académico e Historial (Kardex)</h2>
@@ -1495,15 +1899,15 @@ function App() {
                   {alumnoKardex.academico?.carrera}
                 </div>
                 <div>
-                  <strong>Estatus Académico</strong>
-                  {alumnoKardex.estatus}
+                  <strong>Tutor(a) de Grupo</strong>
+                  {alumnoKardex.academico?.tutor_grupo || 'Sin asignar'}
                 </div>
               </div>
 
               {(alumnoKardex.kardex || []).length === 0 ? (
                 <p style={{ textAlign: 'center', padding: '20px' }}>
-                  Aún no hay registros consolidados en el Kardex. Ve a la pestaña de Boleta y
-                  guarda las calificaciones.
+                  Aún no hay registros consolidados en el Kardex. Guarda calificaciones en la
+                  boleta individual o grupal para actualizarlo.
                 </p>
               ) : (
                 alumnoKardex.kardex.map((bloque, idx) => (
@@ -1528,6 +1932,7 @@ function App() {
                             <th>P2</th>
                             <th>P3</th>
                             <th>Final</th>
+                            <th>EGO</th>
                             <th>Estatus</th>
                           </tr>
                         </thead>
@@ -1546,10 +1951,19 @@ function App() {
                               <td>
                                 <span
                                   className={`badge ${
+                                    m.ego ? 'badge-ego' : 'badge-sin-ego'
+                                  }`}
+                                >
+                                  {m.ego ? 'SÍ (EGO)' : 'NO'}
+                                </span>
+                              </td>
+                              <td>
+                                <span
+                                  className={`badge ${
                                     m.estatus_materia === 'ACREDITADA'
                                       ? 'badge-aprobada'
-                                      : m.estatus_materia === 'NO ACREDITADA'
-                                      ? 'badge-reprobada'
+                                      : m.estatus_materia === 'SE FUE A EGO'
+                                      ? 'badge-ego'
                                       : 'badge-aspirante'
                                   }`}
                                 >
@@ -1573,4 +1987,3 @@ function App() {
 }
 
 export default App;
-
